@@ -1,8 +1,8 @@
-# LimpiaMarcadores
+# limpia/marcadores>
 
-Limpia los marcadores de tu navegador: encuentra carpetas repetidas y enlaces duplicados, decide qué hacer con cada uno y descarga un archivo listo para importar.
+Encuentra carpetas repetidas y links duplicados, decide qué hacer con cada uno y descarga un archivo listo para importar de vuelta.
 
-Todo corre en tu navegador. El archivo no se sube a ningún servidor.
+Todo corre en el navegador. El archivo no se sube a ningún servidor.
 
 ## Uso
 
