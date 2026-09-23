@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>limpia/marcadores></title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>limpia/marcadores></h1>
+  <p class="sub">Carga el archivo HTML de marcadores exportado desde cualquier navegador. Todo se procesa aquí mismo: el archivo no se sube a ningún lado.</p>
+</header>
+
+<main>
+  <div id="drop" class="drop panel">
+    <strong>Arrastra aquí tu archivo de marcadores</strong> o haz clic para elegirlo<br>
+    <small>Chrome, Edge, Brave, Firefox, Safari, Opera, Vivaldi… cualquier export en HTML</small>
+  </div>
+  <input id="file" type="file" accept=".html,.htm" hidden>
+
+  <details id="exportHelp" class="panel">
+    <summary>Cómo exportar tus marcadores</summary>
+    <ol>
+      <li><b>Chrome, Brave, Opera, Vivaldi:</b> administrador de marcadores (Ctrl+Shift+O) → menú ⋮ → <em>Exportar marcadores</em>.</li>
+      <li><b>Edge:</b> favoritos (Ctrl+Shift+O) → menú ⋯ → <em>Exportar favoritos</em>.</li>
+      <li><b>Firefox:</b> biblioteca (Ctrl+Shift+O) → <em>Importar y respaldar</em> → <em>Exportar marcadores a HTML</em>.</li>
+      <li><b>Safari:</b> <em>Archivo</em> → <em>Exportar</em> → <em>Marcadores</em>.</li>
+    </ol>
+  </details>
+
+  <section id="app" class="hidden">
+    <div class="panel">
+      <div class="stats">
+        <div class="stat"><b id="stTotal">0</b><span>marcadores</span></div>
+        <div class="stat"><b id="stFolders">0</b><span>carpetas</span></div>
+        <div class="stat"><b id="stFGroups">0</b><span>nombres de carpeta repetidos</span></div>
+        <div class="stat"><b id="stGroups">0</b><span>URLs repetidas</span></div>
+        <div class="stat"><b id="stExtra">0</b><span>copias sobrantes</span></div>
+      </div>
+      <p class="sub" id="fileName" style="margin-top:8px"></p>
+    </div>
+
+    <details class="panel">
+      <summary>Cómo volver a importar el resultado</summary>
+      <ol>
+        <li>Guarda tu archivo original como respaldo. No se modifica.</li>
+        <li>Descarga el archivo limpio con el botón de abajo.</li>
+        <li>Abre el administrador de marcadores de tu navegador (Ctrl+Shift+O), selecciona todo (Ctrl+A) y elimina los marcadores actuales. Si no, el navegador suma los importados a los que ya tienes y vuelven los duplicados.</li>
+        <li>Importa el archivo descargado desde la opción <em>Importar marcadores</em> → «Archivo HTML». En Safari es <em>Archivo</em> → <em>Importar desde</em> → <em>Archivo HTML de marcadores</em>.</li>
+        <li>Algunos navegadores dejan los marcadores importados dentro de una carpeta nueva (por ejemplo «Importado»). Mueve su contenido donde quieras.</li>
+      </ol>
+    </details>
+
+    <nav class="tabs">
+      <button data-tab="folders" class="on">1 · Carpetas repetidas <span class="badge" id="tabF">0</span></button>
+      <button data-tab="links">2 · Marcadores duplicados <span class="badge" id="tabL">0</span></button>
+    </nav>
+
+    <!-- ===== Pestaña carpetas ===== -->
+    <section id="tab-folders">
+      <div class="panel">
+        <p class="sub" style="margin-bottom:10px">Al fundir, todo el contenido de las carpetas marcadas pasa a la carpeta <b>destino</b> y las demás desaparecen.
+          Si adentro hay subcarpetas con el mismo nombre, también se funden. Nombres como «Imágenes» e «imagenes» cuentan como iguales.</p>
+        <div class="row">
+          <span class="label">Acción masiva</span>
+          <button id="fAll">Fundir todos los grupos visibles</button>
+          <button id="fNone">No fundir ninguno</button>
+        </div>
+        <div class="row">
+          <span class="label">Filtrar</span>
+          <input id="fSearch" type="search" placeholder="Buscar por nombre o ruta…">
+          <select id="fShow">
+            <option value="all">Todos los grupos</option>
+            <option value="on">Para fundir</option>
+            <option value="off">Sin marcar</option>
+          </select>
+        </div>
+      </div>
+      <p class="sub" id="fShown"></p>
+      <div id="fgroups"></div>
+    </section>
+
+    <!-- ===== Pestaña marcadores ===== -->
+    <section id="tab-links" class="hidden">
+      <div class="panel">
+        <p class="sub" style="margin-bottom:10px" id="linksNote"></p>
+        <div class="row">
+          <span class="label">Qué cuenta como duplicado</span>
+          <label class="chk"><input type="checkbox" data-opt="proto" checked> ignorar http/https</label>
+          <label class="chk"><input type="checkbox" data-opt="www" checked> ignorar «www.»</label>
+          <label class="chk"><input type="checkbox" data-opt="slash" checked> ignorar «/» final</label>
+          <label class="chk"><input type="checkbox" data-opt="utm" checked> ignorar parámetros de rastreo (utm_…)</label>
+          <label class="chk"><input type="checkbox" data-opt="hash"> ignorar #fragmento</label>
+        </div>
+        <div class="row">
+          <span class="label">Acción masiva</span>
+          <span>Conservar</span>
+          <select id="bulkKeep">
+            <option value="oldest">el más antiguo</option>
+            <option value="newest">el más reciente</option>
+            <option value="first">el primero en el árbol</option>
+          </select>
+          <span>y el resto</span>
+          <select id="bulkAct">
+            <option value="delete">eliminarlo</option>
+            <option value="move">moverlo a la carpeta</option>
+          </select>
+          <button id="bulkApply">Aplicar a los grupos visibles</button>
+          <button id="reset">Restablecer marcas</button>
+        </div>
+        <div class="row">
+          <span class="label">Filtrar</span>
+          <input id="search" type="search" placeholder="Buscar por URL, título o carpeta…">
+          <select id="show">
+            <option value="all">Todos los grupos</option>
+            <option value="pending">Sin resolver</option>
+            <option value="resolved">Resueltos</option>
+          </select>
+          <select id="sort">
+            <option value="count">Más copias primero</option>
+            <option value="url">Por URL (A-Z)</option>
+            <option value="order">Orden del archivo</option>
+          </select>
+        </div>
+      </div>
+      <p class="sub" id="shown"></p>
+      <div id="groups"></div>
+    </section>
+  </section>
+</main>
+
+<div id="bar" class="bar hidden">
+  <div class="inner">
+    <div class="sum" id="summary"></div>
+    <label class="chk">Carpeta destino: <input id="moveName" type="text" value="Duplicados" size="14"></label>
+    <label class="chk"><input id="pruneEmpty" type="checkbox"> quitar carpetas que queden vacías</label>
+    <button id="download" class="primary">Descargar marcadores limpios</button>
+  </div>
+</div>
+
+<script>
+// ===== CORE-START (lógica pura, sin DOM) =====
+function decodeEntities(s) {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|#39);/gi, (m, e) => {
+    const k = e.toLowerCase();
+    if (k === 'amp') return '&'; if (k === 'lt') return '<'; if (k === 'gt') return '>';
+    if (k === 'quot') return '"'; if (k === 'apos' || k === '#39') return "'";
+    if (k[1] === 'x') return String.fromCodePoint(parseInt(k.slice(2), 16));
+    return String.fromCodePoint(parseInt(k.slice(1), 10));
+  });
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function getAttr(raw, name) {
+  const m = new RegExp('\\b' + name + '="([^"]*)"', 'i').exec(raw);
+  return m ? decodeEntities(m[1]) : '';
+}
+// Nombre de carpeta comparable: sin tildes, sin mayúsculas, sin espacios sobrantes
+function folderKey(rawName) {
+  return decodeEntities(rawName).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+// Formato Netscape: <DL> abre una carpeta, <H3> la nombra, <A> es un marcador.
+// Se guardan los atributos crudos (incluido ICON) para reexportar sin pérdidas.
+function parseBookmarks(html) {
+  const root = { type: 'folder', fid: -1, attrs: '', name: '', children: [] };
+  const stack = [];
+  let fid = 0, lid = 0, pending = null;
+  const re = /<H3\b([^>]*)>([\s\S]*?)<\/H3>|<A\b([^>]*)>([\s\S]*?)<\/A>|<DL\b[^>]*>|<\/DL>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const top = stack[stack.length - 1] || root;
+    if (m[1] !== undefined) {
+      const f = { type: 'folder', fid: fid++, attrs: m[1], name: m[2], children: [] };
+      top.children.push(f);
+      pending = f;
+    } else if (m[3] !== undefined) {
+      top.children.push({ type: 'link', id: lid++, attrs: m[3], title: m[4],
+        href: getAttr(m[3], 'HREF'), addDate: Number(getAttr(m[3], 'ADD_DATE')) || 0 });
+    } else if (m[0][1] === '/') {
+      if (stack.length) stack.pop();
+    } else {
+      stack.push(!stack.length ? root : (pending || top));
+      pending = null;
+    }
+  }
+  return indexTree(root);
+}
+
+// Recorre el árbol y calcula rutas, lista de marcadores y carpetas
+function indexTree(root) {
+  const links = [], folders = [];
+  (function walk(f, path) {
+    for (const c of f.children) {
+      if (c.type === 'folder') {
+        c.path = path.concat(decodeEntities(c.name));
+        c.parent = f;
+        folders.push(c);
+        walk(c, c.path);
+      } else {
+        c.path = path;
+        links.push(c);
+      }
+    }
+  })(root, []);
+  return { root, links, folders };
+}
+
+function cloneTree(f) {
+  return { type: 'folder', fid: f.fid, attrs: f.attrs, name: f.name,
+    children: f.children.map(c => c.type === 'folder' ? cloneTree(c)
+      : { type: 'link', id: c.id, attrs: c.attrs, title: c.title, href: c.href, addDate: c.addDate }) };
+}
+
+function countLinks(f) {
+  return f.children.reduce((s, c) => s + (c.type === 'folder' ? countLinks(c) : 1), 0);
+}
+function contains(ancestor, node) {
+  return ancestor.children.some(c => c === node || (c.type === 'folder' && contains(c, node)));
+}
+
+function findFolderGroups(folders) {
+  const map = new Map();
+  for (const f of folders) {
+    const k = folderKey(f.name);
+    if (!k) continue;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(f);
+  }
+  return [...map].filter(([, arr]) => arr.length > 1).map(([key, items]) => {
+    const info = items.map(f => ({ f, links: countLinks(f), depth: f.path.length }));
+    // Destino sugerido: la menos anidada; si empatan, la con más marcadores
+    const dest = info.slice().sort((a, b) => a.depth - b.depth || b.links - a.links)[0].f;
+    return { key, items: info, defaultDest: dest.fid };
+  }).sort((a, b) => Math.min(...a.items.map(i => i.depth)) - Math.min(...b.items.map(i => i.depth)) || a.key.localeCompare(b.key));
+}
+
+// plans: [{ dest: fid, sources: [fid, ...] }] en orden de aplicación.
+// Trabaja sobre un árbol ya clonado. Devuelve cuántas fusiones hizo y cuáles omitió.
+function applyMerges(root, plans) {
+  const byFid = new Map();
+  (function walk(f) { for (const c of f.children) if (c.type === 'folder') { byFid.set(c.fid, c); walk(c); } })(root);
+  const redirect = new Map();
+  const resolve = fid => { while (redirect.has(fid)) fid = redirect.get(fid); return byFid.get(fid); };
+  const parentOf = node => {
+    let found = null;
+    (function walk(f) { for (const c of f.children) { if (c === node) { found = f; return; } if (c.type === 'folder') walk(c); if (found) return; } })(root);
+    return found;
+  };
+  function mergeInto(src, dest) {
+    const p = parentOf(src);
+    if (p) p.children.splice(p.children.indexOf(src), 1);
+    redirect.set(src.fid, dest.fid);
+    merged++;
+    for (const c of src.children) {
+      const twin = c.type === 'folder' && dest.children.find(d => d.type === 'folder' && folderKey(d.name) === folderKey(c.name));
+      if (twin) mergeInto(c, twin); else dest.children.push(c);
+    }
+    src.children = [];
+  }
+  let merged = 0; const skipped = [];
+  for (const plan of plans) {
+    for (const sfid of plan.sources) {
+      const dest = resolve(plan.dest), src = resolve(sfid);
+      if (!dest || !src || src === dest) continue;
+      if (contains(src, dest)) { skipped.push(sfid); continue; }
+      mergeInto(src, dest);
+    }
+  }
+  return { merged, skipped };
+}
+
+function urlKey(href, o) {
+  const raw = href.trim();
+  let url;
+  try { url = new URL(raw); } catch (e) { return raw; }
+  if (!/^https?:$/.test(url.protocol)) return raw;
+  let host = url.hostname.toLowerCase();
+  if (o.www) host = host.replace(/^www\./, '');
+  let path = url.pathname;
+  if (o.slash) path = path.replace(/\/+$/, '');
+  let search = url.search;
+  if (o.utm) {
+    const p = url.searchParams;
+    [...p.keys()].forEach(k => { if (/^(utm_.*|fbclid|gclid|mc_cid|mc_eid)$/i.test(k)) p.delete(k); });
+    const qs = p.toString();
+    search = qs ? '?' + qs : '';
+  }
+  const hash = o.hash ? '' : url.hash;
+  const proto = o.proto ? '' : url.protocol;
+  return proto + '//' + host + (url.port ? ':' + url.port : '') + path + search + hash;
+}
+
+function findGroups(links, o) {
+  const map = new Map();
+  for (const l of links) {
+    const k = urlKey(l.href, o);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(l);
+  }
+  return [...map].filter(([, arr]) => arr.length > 1).map(([key, items]) => ({ key, items }));
+}
+
+// decisions: Map id -> 'keep' | 'move' | 'delete' (ausente = keep)
+function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
+  const moved = [];
+  const out = ['<!DOCTYPE NETSCAPE-Bookmark-file-1>',
+    '<!-- This is an automatically generated file.',
+    '     It will be read and overwritten.',
+    '     DO NOT EDIT! -->',
+    '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+    '<TITLE>Bookmarks</TITLE>',
+    '<H1>Bookmarks</H1>'];
+  const linkLine = (l, ind) => ind + '<DT><A' + l.attrs + '>' + l.title + '</A>';
+  function hasContent(f) {
+    return f.children.some(c => c.type === 'folder'
+      ? (!pruneEmpty || hasContent(c))
+      : (decisions.get(c.id) || 'keep') === 'keep');
+  }
+  function collectMoved(f) {
+    for (const c of f.children) {
+      if (c.type === 'folder') collectMoved(c);
+      else if (decisions.get(c.id) === 'move') moved.push(c);
+    }
+  }
+  function walk(f, depth, extra) {
+    const ind = '    '.repeat(depth);
+    out.push(ind + '<DL><p>');
+    for (const c of f.children) {
+      if (c.type === 'folder') {
+        if (pruneEmpty && !hasContent(c)) { collectMoved(c); continue; }
+        out.push(ind + '    <DT><H3' + c.attrs + '>' + c.name + '</H3>');
+        walk(c, depth + 1);
+      } else {
+        const d = decisions.get(c.id) || 'keep';
+        if (d === 'keep') out.push(linkLine(c, ind + '    '));
+        else if (d === 'move') moved.push(c);
+      }
+    }
+    if (extra) extra(ind + '    ');
+    out.push(ind + '</DL><p>');
+  }
+  walk(root, 0, ind => {
+    if (!moved.length) return;
+    const now = Math.floor(Date.now() / 1000);
+    out.push(ind + '<DT><H3 ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '">' + escapeHtml(moveName || 'Duplicados') + '</H3>');
+    out.push(ind + '<DL><p>');
+    for (const l of moved) out.push(linkLine(l, ind + '    '));
+    out.push(ind + '</DL><p>');
+  });
+  return { html: out.join('\n') + '\n', movedCount: moved.length };
+}
+// ===== CORE-END =====
+
+(() => {
+  const $ = id => document.getElementById(id);
+  let original = null, work = null, fileName = '';
+  let fgroups = [], groups = [], mergeResult = { merged: 0, skipped: [] };
+  const decisions = new Map();
+  // Plan de fusión por grupo de carpetas: key -> { on, dest: fid, exclude: Set<fid> }
+  const mergePlan = new Map();
+  const opts = { proto: true, www: true, slash: true, utm: true, hash: false };
+  let tab = 'folders';
+
+  const drop = $('drop'), fileInput = $('file');
+  drop.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => fileInput.files[0] && load(fileInput.files[0]));
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => e.dataTransfer.files[0] && load(e.dataTransfer.files[0]));
+
+  function load(file) {
+    const r = new FileReader();
+    r.onload = () => {
+      const parsed = parseBookmarks(r.result);
+      if (!parsed.links.length) { alert('No se encontraron marcadores en ese archivo.'); return; }
+      original = parsed; fileName = file.name;
+      decisions.clear(); mergePlan.clear();
+      fgroups = findFolderGroups(original.folders);
+      for (const g of fgroups) mergePlan.set(g.key, { on: false, dest: g.defaultDest, exclude: new Set() });
+      $('stTotal').textContent = original.links.length.toLocaleString('es');
+      $('stFolders').textContent = original.folders.length.toLocaleString('es');
+      $('stFGroups').textContent = fgroups.length.toLocaleString('es');
+      $('tabF').textContent = fgroups.length;
+      $('fileName').textContent = 'Archivo: ' + file.name;
+      $('app').classList.remove('hidden'); $('bar').classList.remove('hidden'); $('exportHelp').classList.add('hidden');
+      drop.innerHTML = '<strong>' + escapeHtml(file.name) + '</strong> cargado · haz clic o arrastra otro archivo para reemplazarlo';
+      fileInput.value = '';
+      rebuild();
+    };
+    r.readAsText(file, 'utf-8');
+  }
+
+  // Árbol de trabajo = original + fusiones de carpetas. Los duplicados se buscan sobre él.
+  function rebuild() {
+    const root = cloneTree(original.root);
+    const plans = fgroups.filter(g => mergePlan.get(g.key).on).map(g => {
+      const p = mergePlan.get(g.key);
+      return { dest: p.dest, sources: g.items.map(i => i.f.fid).filter(fid => fid !== p.dest && !p.exclude.has(fid)) };
+    });
+    mergeResult = applyMerges(root, plans);
+    work = indexTree(root);
+    recomputeLinks(false);
+    renderTab();
+  }
+
+  function recomputeLinks(doRender = true) {
+    groups = findGroups(work.links, opts);
+    const inGroup = new Set(groups.flatMap(g => g.items.map(l => l.id)));
+    for (const id of [...decisions.keys()]) if (!inGroup.has(id)) decisions.delete(id);
+    $('stGroups').textContent = groups.length.toLocaleString('es');
+    $('stExtra').textContent = groups.reduce((s, g) => s + g.items.length - 1, 0).toLocaleString('es');
+    $('tabL').textContent = groups.length;
+    $('linksNote').textContent = mergeResult.merged
+      ? `Las rutas ya consideran las ${mergeResult.merged} carpetas fundidas en el paso 1.`
+      : 'Tip: si primero fundes carpetas en el paso 1, aquí verás las rutas ya fusionadas.';
+    if (doRender) renderTab();
+  }
+
+  function renderTab() {
+    $('tab-folders').classList.toggle('hidden', tab !== 'folders');
+    $('tab-links').classList.toggle('hidden', tab !== 'links');
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    if (tab === 'folders') renderFolders(); else renderLinks();
+    updateSummary();
+  }
+  document.querySelector('.tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]');
+    if (b) { tab = b.dataset.tab; renderTab(); }
+  });
+
+  const fmtDate = t => t ? new Date(t * 1000).toLocaleDateString('es', { year: 'numeric', month: 'short', day: 'numeric' }) : 's/f';
+  const fmtPath = p => escapeHtml(p.join(' › ') || '(raíz)');
+
+  // ---------- Carpetas ----------
+  let fcurrent = [];
+  function visibleFGroups() {
+    const q = $('fSearch').value.trim().toLowerCase();
+    const show = $('fShow').value;
+    return fgroups.filter(g => {
+      const on = mergePlan.get(g.key).on;
+      if (show === 'on' && !on) return false;
+      if (show === 'off' && on) return false;
+      return !q || g.key.includes(q) || g.items.some(i => i.f.path.join('/').toLowerCase().includes(q));
+    });
+  }
+
+  function fgroupHtml(g) {
+    const p = mergePlan.get(g.key);
+    const destF = g.items.find(i => i.f.fid === p.dest).f;
+    const blocked = i => i.f.fid !== p.dest && contains(i.f, destF);
+    const srcCount = g.items.filter(i => i.f.fid !== p.dest && !p.exclude.has(i.f.fid) && !blocked(i)).length;
+    const status = p.on ? (srcCount ? `<span class="done">✓ se funden ${srcCount + 1} en una</span>` : '<span class="warn">nada que fundir</span>') : '';
+    const names = [...new Set(g.items.map(i => decodeEntities(i.f.name)))].join(' / ');
+    const rows = g.items.map(i => {
+      const isDest = i.f.fid === p.dest, blk = blocked(i), inc = !p.exclude.has(i.f.fid) && !blk;
+      const cls = !p.on ? '' : isDest ? 'f-dest' : inc ? 'f-src' : 'f-off';
+      const subs = i.f.children.filter(c => c.type === 'folder').length;
+      return `<div class="item ${cls}">
+        <label class="chk"><input type="radio" name="dest-${escapeHtml(g.key)}" data-dest="${i.f.fid}" ${isDest ? 'checked' : ''}> Destino</label>
+        <div class="ititle"><b>${fmtPath(i.f.path)}</b>
+          <div class="meta">${i.links} marcadores · ${subs} subcarpetas${blk ? ' · <span class="warn">contiene a la carpeta destino, no se puede fundir</span>' : ''}</div></div>
+        ${isDest ? '<span class="meta">recibe el contenido</span>'
+          : `<label class="chk"><input type="checkbox" data-inc="${i.f.fid}" ${inc ? 'checked' : ''} ${blk ? 'disabled' : ''}> incluir</label>`}
+      </div>`;
+    }).join('');
+    return `<div class="group" data-fg="${escapeHtml(g.key)}"><div class="ghead">
+      <label class="chk"><input type="checkbox" data-on ${p.on ? 'checked' : ''}> Fundir</label>
+      <span class="badge">×${g.items.length}</span><span class="gname">${escapeHtml(names)}</span>${status}</div>${rows}</div>`;
+  }
+
+  function renderFolders() {
+    fcurrent = visibleFGroups();
+    $('fgroups').innerHTML = fcurrent.length ? fcurrent.map(fgroupHtml).join('')
+      : '<div class="empty">No hay carpetas repetidas que coincidan.</div>';
+    const sk = mergeResult.skipped.length;
+    $('fShown').textContent = `Mostrando ${fcurrent.length} de ${fgroups.length} grupos` +
+      (sk ? ` · ${sk} fusiones omitidas porque una carpeta contenía a su destino` : '');
+  }
+
+  $('fgroups').addEventListener('change', e => {
+    const el = e.target, card = el.closest('.group');
+    if (!card) return;
+    const p = mergePlan.get(card.dataset.fg);
+    if (el.dataset.on !== undefined) p.on = el.checked;
+    else if (el.dataset.dest) { p.dest = Number(el.dataset.dest); p.exclude.delete(p.dest); p.on = true; }
+    else if (el.dataset.inc) { const fid = Number(el.dataset.inc); el.checked ? p.exclude.delete(fid) : p.exclude.add(fid); }
+    rebuild();
+  });
+  $('fAll').addEventListener('click', () => { visibleFGroups().forEach(g => { mergePlan.get(g.key).on = true; }); rebuild(); });
+  $('fNone').addEventListener('click', () => { mergePlan.forEach(p => { p.on = false; }); rebuild(); });
+  let ft;
+  $('fSearch').addEventListener('input', () => { clearTimeout(ft); ft = setTimeout(renderFolders, 150); });
+  $('fShow').addEventListener('change', renderFolders);
+
+  // ---------- Marcadores ----------
+  const dec = l => decisions.get(l.id) || 'keep';
+  const isResolved = g => g.items.filter(l => dec(l) === 'keep').length <= 1;
+
+  function visibleGroups() {
+    const q = $('search').value.trim().toLowerCase();
+    const show = $('show').value;
+    let list = groups.filter(g => {
+      if (show === 'pending' && isResolved(g)) return false;
+      if (show === 'resolved' && !isResolved(g)) return false;
+      if (!q) return true;
+      return g.key.toLowerCase().includes(q) || g.items.some(l =>
+        decodeEntities(l.title).toLowerCase().includes(q) || l.path.join('/').toLowerCase().includes(q));
+    });
+    const s = $('sort').value;
+    if (s === 'count') list = list.slice().sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key));
+    else if (s === 'url') list = list.slice().sort((a, b) => a.key.localeCompare(b.key));
+    return list;
+  }
+
+  function groupHtml(g, gi) {
+    const kept = g.items.filter(l => dec(l) === 'keep').length;
+    const status = kept === 0 ? '<span class="warn">⚠ no se conserva ninguna copia</span>'
+      : kept === 1 ? '<span class="done">✓ resuelto</span>' : '';
+    const items = g.items.map(l => {
+      const d = dec(l);
+      const title = decodeEntities(l.title) || '(sin título)';
+      const seg = ['keep', 'move', 'delete'].map(a =>
+        `<button data-a="${a}" data-id="${l.id}" class="${d === a ? 'on' : ''}">${{ keep: 'Mantener', move: 'Mover', delete: 'Eliminar' }[a]}</button>`).join('');
+      return `<div class="item s-${d}">
+        <div class="seg">${seg}</div>
+        <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>
+          <div class="meta">📁 ${fmtPath(l.path)} · ${fmtDate(l.addDate)}${l.href.trim() !== g.items[0].href.trim() ? ' · ' + escapeHtml(l.href) : ''}</div></div>
+        <button class="only" data-only="${l.id}" title="Conservar este y aplicar la acción masiva al resto">Solo este</button>
+      </div>`;
+    }).join('');
+    return `<div class="group"><div class="ghead"><span class="badge">×${g.items.length}</span>
+      <span class="gurl">${escapeHtml(g.items[0].href)}</span>${status}</div>${items}</div>`;
+  }
+
+  let current = [];
+  function renderLinks() {
+    current = visibleGroups();
+    $('groups').innerHTML = current.length ? current.map(groupHtml).join('')
+      : '<div class="empty">No hay grupos que coincidan.</div>';
+    $('shown').textContent = `Mostrando ${current.length} de ${groups.length} grupos`;
+  }
+
+  function pickKeeper(items, mode) {
+    if (mode === 'first') return items[0];
+    const withDate = items.filter(l => l.addDate);
+    if (!withDate.length) return items[0];
+    return withDate.reduce((a, b) => (mode === 'oldest' ? b.addDate < a.addDate : b.addDate > a.addDate) ? b : a);
+  }
+
+  function setGroup(g, keeper) {
+    const act = $('bulkAct').value;
+    for (const l of g.items) {
+      if (l === keeper) decisions.delete(l.id); else decisions.set(l.id, act);
+    }
+  }
+
+  // Redibuja un único grupo, sin reconstruir toda la lista
+  function rerenderGroup(gi) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = groupHtml(current[gi], gi);
+    $('groups').children[gi].replaceWith(tmp.firstElementChild);
+    updateSummary();
+  }
+
+  $('groups').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const gi = [...$('groups').children].indexOf(b.closest('.group'));
+    if (b.dataset.a) {
+      const id = Number(b.dataset.id);
+      if (b.dataset.a === 'keep') decisions.delete(id); else decisions.set(id, b.dataset.a);
+    } else if (b.dataset.only) {
+      const g = current[gi];
+      setGroup(g, g.items.find(l => l.id === Number(b.dataset.only)));
+    }
+    rerenderGroup(gi);
+  });
+
+  $('bulkApply').addEventListener('click', () => {
+    const list = visibleGroups();
+    const act = $('bulkAct').value === 'delete' ? 'eliminar' : 'mover';
+    if (!confirm(`Se conservará una copia en ${list.length} grupos y el resto se marcará para ${act}. ¿Seguimos?`)) return;
+    const mode = $('bulkKeep').value;
+    for (const g of list) setGroup(g, pickKeeper(g.items, mode));
+    renderTab();
+  });
+  $('reset').addEventListener('click', () => { if (confirm('¿Quitar todas las marcas de marcadores?')) { decisions.clear(); renderTab(); } });
+  document.querySelectorAll('[data-opt]').forEach(cb => cb.addEventListener('change', () => {
+    opts[cb.dataset.opt] = cb.checked; recomputeLinks();
+  }));
+  let t;
+  $('search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderLinks, 150); });
+  $('show').addEventListener('change', renderLinks);
+  $('sort').addEventListener('change', renderLinks);
+
+  // ---------- Resumen y descarga ----------
+  function updateSummary() {
+    let del = 0, mov = 0;
+    for (const v of decisions.values()) { if (v === 'delete') del++; else if (v === 'move') mov++; }
+    const mer = mergeResult.merged;
+    const name = escapeHtml($('moveName').value || 'Duplicados');
+    const parts = [];
+    if (mer) parts.push(`<span class="merge-t">${mer}</span> carpetas fundidas`);
+    if (del) parts.push(`<span class="del-t">${del}</span> marcadores para eliminar`);
+    if (mov) parts.push(`<span class="move-t">${mov}</span> para mover a «${name}»`);
+    $('summary').innerHTML = parts.length ? parts.join(' · ') : 'Todavía no has marcado cambios.';
+    $('download').disabled = !(del || mov || mer) && !$('pruneEmpty').checked;
+  }
+  $('moveName').addEventListener('input', updateSummary);
+  $('pruneEmpty').addEventListener('change', updateSummary);
+
+  $('download').addEventListener('click', () => {
+    const { html } = serializeBookmarks(work.root, decisions, $('moveName').value.trim(), $('pruneEmpty').checked);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.html?$/i, '') + '_limpio.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
+</body>
+</html>
