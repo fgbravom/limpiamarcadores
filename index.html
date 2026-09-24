@@ -37,6 +37,7 @@
         <div class="stat"><b id="stFGroups">0</b><span>nombres de carpeta repetidos</span></div>
         <div class="stat"><b id="stGroups">0</b><span>URLs repetidas</span></div>
         <div class="stat"><b id="stExtra">0</b><span>copias sobrantes</span></div>
+        <div class="stat"><b id="stBroken">—</b><span>links con dominio inexistente <span id="stSuspect"></span></span></div>
       </div>
     </div>
 
@@ -64,6 +65,7 @@
     <nav class="tabs">
       <button data-tab="folders" class="on">1 · Carpetas repetidas <span class="badge" id="tabF">0</span></button>
       <button data-tab="links">2 · Marcadores duplicados <span class="badge" id="tabL">0</span></button>
+      <button data-tab="broken">3 · Links rotos <span class="badge" id="tabB">—</span></button>
     </nav>
 
     <!-- ===== Pestaña carpetas ===== -->
@@ -137,6 +139,52 @@
       <div id="groups"></div>
     </section>
 
+    <!-- ===== Pestaña links rotos ===== -->
+    <section id="tab-broken" class="hidden">
+      <div class="panel">
+        <p class="sub" style="margin-bottom:10px">La revisión intenta abrir cada link desde tu navegador y los separa en dos niveles:</p>
+        <ul class="sub levels">
+          <li><span class="st st-bad">El dominio ya no existe</span>: <b>seguro</b>. El sitio completo desapareció; se puede borrar sin miedo.</li>
+          <li><span class="st st-warn">No se pudo abrir</span> o <span class="st st-warn">Tiempo agotado</span>: <b>sospechoso</b>. Puede estar caído, pero muchos sitios que funcionan
+            (Canva, por ejemplo) bloquean que otra página los lea y quedan aquí igual. Ábrelos para confirmar antes de borrar.
+            Los Shields de Brave o un bloqueador de anuncios también pueden hacer que un sitio caiga aquí.</li>
+        </ul>
+        <p class="sub" style="margin:8px 0 10px">Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador.
+          Ojo: esto sí contacta a cada sitio. Con la opción de DNS activada, además se consulta el nombre de dominio (solo el dominio, nunca la ruta) al DNS de Cloudflare.</p>
+        <div class="row">
+          <button id="bCheck" class="primary">Revisar links</button>
+          <button id="bRecheck">Volver a revisar los sospechosos</button>
+          <label class="chk"><input id="useDns" type="checkbox" checked> detectar dominios inexistentes vía DNS de Cloudflare</label>
+        </div>
+        <div class="row">
+          <div class="progress"><div id="progBar"></div></div>
+          <span class="meta" id="progText">Todavía no se ha revisado ningún link.</span>
+        </div>
+        <div class="row">
+          <span class="label">Acción masiva</span>
+          <select id="bAct">
+            <option value="move">Mover a la carpeta de links rotos</option>
+            <option value="delete">Eliminar</option>
+            <option value="keep">Mantener (quitar marca)</option>
+          </select>
+          <button id="bApply">Aplicar a los visibles</button>
+          <label class="chk">Carpeta: <input id="brokenName" type="text" value="Links rotos" size="14"></label>
+        </div>
+        <div class="row">
+          <span class="label">Filtrar</span>
+          <input id="bSearch" type="search" placeholder="Buscar por URL, título o carpeta…">
+          <select id="bShow">
+            <option value="dns">Seguros: el dominio ya no existe</option>
+            <option value="noresp">Sospechosos: no se pudo abrir / tiempo agotado</option>
+            <option value="broken">Seguros + sospechosos</option>
+            <option value="na">No verificables</option>
+            <option value="ok">Responden</option>
+          </select>
+        </div>
+      </div>
+      <p class="sub" id="bShown"></p>
+      <div id="broken" class="group flat"></div>
+    </section>
   </section>
 </main>
 
@@ -436,6 +484,68 @@ async function unzipHtmlFiles(buf) {
   return out;
 }
 
+// ---- Revisión de links ----
+// Desde una página no se puede leer la respuesta de otro sitio (CORS), pero un fetch
+// 'no-cors' igual distingue "el servidor respondió algo" de "no hubo conexión".
+const LOCAL_HOST = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)|\.(local|localhost|lan|internal)$/i;
+
+async function resolveHost(host, signal) { // true = existe · false = no existe · null = no se supo
+  try {
+    for (const type of ['A', 'AAAA']) {
+      const r = await fetch('https://cloudflare-dns.com/dns-query?name=' + encodeURIComponent(host) + '&type=' + type,
+        { headers: { accept: 'application/dns-json' }, signal });
+      const j = await r.json();
+      if (j.Status === 3) return false;
+      if (j.Status !== 0) return null;
+      if ((j.Answer || []).length) return true;
+    }
+    return false;
+  } catch (e) { return null; }
+}
+
+async function probe(href, method, ms, signal) {
+  if (signal && signal.aborted) return 'error';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  const onAbort = () => ctl.abort();
+  if (signal) signal.addEventListener('abort', onAbort);
+  try {
+    await fetch(href, { method, mode: 'no-cors', cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: ctl.signal });
+    return 'ok';
+  } catch (e) {
+    return ctl.signal.aborted && !(signal && signal.aborted) ? 'timeout' : 'error';
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+// Estados: ok · dns (dominio no existe) · error (no conecta) · timeout · unknown · local · skip
+async function checkUrl(href, o) {
+  let url;
+  try { url = new URL(href.trim()); } catch (e) { return 'skip'; }
+  if (!/^https?:$/.test(url.protocol)) return 'skip';
+  const host = url.hostname;
+  if (LOCAL_HOST.test(host) || !host.includes('.')) return 'local';
+  const isIp = /^[\d.]+$/.test(host) || host.includes(':') || host.startsWith('[');
+  if (o.useDns && !isIp) {
+    if (!o.dnsCache.has(host)) o.dnsCache.set(host, resolveHost(host, o.signal));
+    if ((await o.dnsCache.get(host)) === false) return 'dns';
+  }
+  // Una página https no puede pedir recursos http (contenido mixto)
+  if (url.protocol === 'http:' && o.pageIsHttps) return 'unknown';
+  const ms = o.timeoutMs || 12000;
+  let r = await probe(url.href, 'HEAD', ms, o.signal);
+  if (r === 'error') r = await probe(url.href, 'GET', ms, o.signal); // algunos servidores rechazan HEAD
+  return r;
+}
+
+async function runPool(items, worker, concurrency, signal) {
+  let i = 0;
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (i < items.length && !(signal && signal.aborted)) await worker(items[i++]);
+  }));
+}
 // ===== CORE-END =====
 
 (() => {
@@ -446,10 +556,11 @@ async function unzipHtmlFiles(buf) {
   let original = null, work = null;
   let fgroups = [], groups = [], mergeResult = { merged: 0, skipped: [] };
   const decisions = new Map();   // duplicados: id -> 'move' | 'delete'
+  const brokenDec = new Map();   // rotos: id -> 'move' | 'delete'
   // Plan de fusión por grupo de carpetas: key -> { on, dest: fid, exclude: Set<fid> }
   const mergePlan = new Map();
   const opts = { proto: true, www: true, slash: true, utm: true, hash: false };
-  const limits = { folders: PAGE, links: PAGE };
+  const limits = { folders: PAGE, links: PAGE, broken: PAGE };
   let tab = 'folders';
 
   // ---------- Carga de archivos ----------
@@ -460,7 +571,7 @@ async function unzipHtmlFiles(buf) {
   ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 
-  const hasMarks = () => decisions.size || [...mergePlan.values()].some(p => p.on);
+  const hasMarks = () => decisions.size || brokenDec.size || [...mergePlan.values()].some(p => p.on);
 
   async function addFiles(list) {
     if (!list.length) return;
@@ -501,7 +612,7 @@ async function unzipHtmlFiles(buf) {
     if (!b) return;
     if (hasMarks() && !confirm('Quitar un archivo borra las marcas de marcadores que ya hiciste. ¿Seguimos?')) return;
     files.splice(Number(b.dataset.rm), 1);
-    decisions.clear();
+    decisions.clear(); brokenDec.clear();
     if (!files.length) { location.reload(); return; }
     recombine(false);
   });
@@ -559,6 +670,7 @@ async function unzipHtmlFiles(buf) {
     mergeResult = applyMerges(root, plans);
     work = indexTree(root);
     recomputeLinks(false);
+    updateBrokenStats();
     renderTab();
   }
 
@@ -576,9 +688,9 @@ async function unzipHtmlFiles(buf) {
   }
 
   function renderTab() {
-    for (const t of ['folders', 'links']) $('tab-' + t).classList.toggle('hidden', tab !== t);
+    for (const t of ['folders', 'links', 'broken']) $('tab-' + t).classList.toggle('hidden', tab !== t);
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    if (tab === 'folders') renderFolders(); else renderLinks();
+    if (tab === 'folders') renderFolders(); else if (tab === 'links') renderLinks(); else renderBroken();
     updateSummary();
   }
   document.querySelector('.tabs').addEventListener('click', e => {
@@ -682,6 +794,10 @@ async function unzipHtmlFiles(buf) {
     return '<div class="seg">' + ['keep', 'move', 'delete'].map(a =>
       `<button ${attr}="${a}" data-id="${id}" class="${d === a ? 'on' : ''}" data-a-style="${a}">${{ keep: 'Mantener', move: 'Mover', delete: 'Eliminar' }[a]}</button>`).join('') + '</div>';
   }
+  const statusTag = l => {
+    const s = linkStatus.get(l.href.trim());
+    return s && s !== 'ok' ? ` · <span class="st st-${STATUS[s][1]}">${STATUS[s][0]}</span>` : '';
+  };
 
   function groupHtml(g) {
     const kept = g.items.filter(l => dec(l) === 'keep').length;
@@ -693,7 +809,7 @@ async function unzipHtmlFiles(buf) {
       return `<div class="item s-${d}">
         ${segHtml(l.id, d, 'data-a')}
         <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>${srcTag(l)}
-          <div class="meta">📁 ${fmtPath(l.path)} · ${fmtDate(l.addDate)}${l.href.trim() !== g.items[0].href.trim() ? ' · ' + escapeHtml(l.href) : ''}</div></div>
+          <div class="meta">📁 ${fmtPath(l.path)} · ${fmtDate(l.addDate)}${l.href.trim() !== g.items[0].href.trim() ? ' · ' + escapeHtml(l.href) : ''}${statusTag(l)}</div></div>
         <button class="only" data-only="${l.id}" title="Conservar este y aplicar la acción masiva al resto">Solo este</button>
       </div>`;
     }).join('');
@@ -760,12 +876,129 @@ async function unzipHtmlFiles(buf) {
   $('show').addEventListener('change', () => { limits.links = PAGE; renderLinks(); });
   $('sort').addEventListener('change', () => { limits.links = PAGE; renderLinks(); });
 
+  // ---------- Links rotos ----------
+  const linkStatus = new Map(); // href -> estado; sobrevive a fusiones y a cargar más archivos
+  const dnsCache = new Map();
+  const STATUS = {
+    ok: ['Responde', 'ok'], dns: ['El dominio ya no existe', 'bad'], error: ['No se pudo abrir', 'warn'],
+    timeout: ['Tiempo agotado', 'warn'], unknown: ['Sin verificar (http)', 'na'],
+    local: ['Red local', 'na'], skip: ['No es un sitio web', 'na'],
+  };
+  const FILTERS = {
+    broken: s => s === 'dns' || s === 'error' || s === 'timeout',
+    dns: s => s === 'dns', noresp: s => s === 'error' || s === 'timeout',
+    na: s => s && STATUS[s][1] === 'na', ok: s => s === 'ok',
+  };
+  let checking = null;
+
+  function updateBrokenStats() {
+    const checked = work.links.filter(l => linkStatus.has(l.href.trim()));
+    const dead = checked.filter(l => FILTERS.dns(linkStatus.get(l.href.trim()))).length;
+    const suspect = checked.filter(l => FILTERS.noresp(linkStatus.get(l.href.trim()))).length;
+    const any = checked.length > 0;
+    $('stBroken').textContent = any ? dead.toLocaleString('es') : '—';
+    $('stSuspect').textContent = any ? `+ ${suspect.toLocaleString('es')} sospechosos` : '';
+    $('tabB').textContent = any ? dead : '—';
+    const pending = new Set(work.links.map(l => l.href.trim()).filter(h => !linkStatus.has(h))).size;
+    if (!checking) {
+      $('bCheck').textContent = !any ? 'Revisar links' : pending ? `Revisar pendientes (${pending})` : 'Todo revisado';
+      $('bCheck').disabled = any && !pending;
+      $('bRecheck').disabled = !suspect;
+    }
+  }
+
+  async function startCheck(onlyBroken) {
+    if (checking) { checking.abort(); $('bCheck').textContent = 'Deteniendo…'; $('bCheck').disabled = true; return; }
+    const all = [...new Set(work.links.map(l => l.href.trim()))];
+    // Revisar de nuevo solo tiene sentido con los sospechosos: un dominio inexistente no vuelve solo
+    const hrefs = onlyBroken ? all.filter(h => FILTERS.noresp(linkStatus.get(h))) : all.filter(h => !linkStatus.has(h));
+    if (!hrefs.length) return;
+    if (onlyBroken) hrefs.forEach(h => linkStatus.delete(h));
+    checking = new AbortController();
+    const signal = checking.signal;
+    $('bCheck').textContent = 'Detener'; $('bCheck').disabled = false; $('bRecheck').disabled = true;
+    const o = { useDns: $('useDns').checked, dnsCache, signal, pageIsHttps: location.protocol === 'https:' };
+    let done = 0, dead = 0, suspect = 0, last = 0;
+    const progress = () => {
+      $('progBar').style.width = (100 * done / hrefs.length).toFixed(1) + '%';
+      $('progText').textContent = `${done.toLocaleString('es')} de ${hrefs.length.toLocaleString('es')} links revisados · ${dead} con dominio inexistente · ${suspect} sospechosos`;
+    };
+    progress();
+    await runPool(hrefs, async h => {
+      const st = await checkUrl(h, o);
+      if (signal.aborted) return;
+      linkStatus.set(h, st);
+      done++; if (st === 'dns') dead++; else if (FILTERS.noresp(st)) suspect++;
+      progress();
+      if (Date.now() - last > 2000) { last = Date.now(); updateBrokenStats(); if (tab === 'broken') renderBroken(); }
+    }, 12, signal);
+    const stopped = signal.aborted;
+    checking = null;
+    progress();
+    if (stopped) $('progText').textContent += ' · detenido';
+    updateBrokenStats();
+    renderTab();
+  }
+  $('bCheck').addEventListener('click', () => startCheck(false));
+  $('bRecheck').addEventListener('click', () => startCheck(true));
+
+  const bdec = l => brokenDec.get(l.id) || 'keep';
+  let bcurrent = [];
+  function visibleBroken() {
+    const q = $('bSearch').value.trim().toLowerCase();
+    const f = FILTERS[$('bShow').value];
+    return work.links.filter(l => f(linkStatus.get(l.href.trim())) && (!q || matches(l, q)));
+  }
+  function brokenRowHtml(l) {
+    const d = bdec(l), s = linkStatus.get(l.href.trim());
+    const title = decodeEntities(l.title) || '(sin título)';
+    return `<div class="item s-${d}" data-row="${l.id}">
+      ${segHtml(l.id, d, 'data-b')}
+      <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>${srcTag(l)}
+        <div class="meta">📁 ${fmtPath(l.path)} · ${escapeHtml(l.href)}</div></div>
+      <span class="st st-${STATUS[s][1]}">${STATUS[s][0]}</span>
+    </div>`;
+  }
+  function renderBroken() {
+    if (!work.links.some(l => linkStatus.has(l.href.trim()))) {
+      $('broken').innerHTML = '<div class="empty">Aprieta «Revisar links» para empezar. Con unos 2.000 links distintos toma entre 3 y 5 minutos; puedes detenerla y seguir después.</div>';
+      $('bShown').textContent = '';
+      return;
+    }
+    bcurrent = visibleBroken();
+    const shown = bcurrent.slice(0, limits.broken);
+    $('broken').innerHTML = shown.length ? shown.map(brokenRowHtml).join('') + moreBtn('broken', shown.length, bcurrent.length)
+      : '<div class="empty">No hay links en esta categoría.</div>';
+    $('bShown').textContent = `${bcurrent.length} marcadores`;
+  }
+  $('broken').addEventListener('click', e => {
+    const b = e.target.closest('button[data-b]');
+    if (!b) return;
+    const id = Number(b.dataset.id);
+    if (b.dataset.b === 'keep') brokenDec.delete(id); else brokenDec.set(id, b.dataset.b);
+    const row = b.closest('.item');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = brokenRowHtml(work.links.find(l => l.id === id));
+    row.replaceWith(tmp.firstElementChild);
+    updateSummary();
+  });
+  $('bApply').addEventListener('click', () => {
+    const list = visibleBroken(), act = $('bAct').value;
+    if (act !== 'keep' && !confirm(`Se marcarán ${list.length} marcadores para ${act === 'delete' ? 'eliminar' : 'mover'}. ¿Seguimos?`)) return;
+    for (const l of list) { if (act === 'keep') brokenDec.delete(l.id); else brokenDec.set(l.id, act); }
+    renderTab();
+  });
+  let bt;
+  $('bSearch').addEventListener('input', () => { clearTimeout(bt); bt = setTimeout(() => { limits.broken = PAGE; renderBroken(); }, 150); });
+  $('bShow').addEventListener('change', () => { limits.broken = PAGE; renderBroken(); });
+
   // ---------- Resumen y descarga ----------
-  // Decisión final de cada marcador: 'keep', 'delete' o la carpeta a la que se mueve
+  // Decisión final de cada marcador: eliminar gana; si no, rotos antes que duplicados
   function decide(l) {
-    const d = decisions.get(l.id);
-    if (d === 'delete') return 'delete';
-    if (d === 'move') return $('moveName').value.trim() || 'Duplicados';
+    const d1 = decisions.get(l.id), d2 = brokenDec.get(l.id);
+    if (d1 === 'delete' || d2 === 'delete') return 'delete';
+    if (d2 === 'move') return $('brokenName').value.trim() || 'Links rotos';
+    if (d1 === 'move') return $('moveName').value.trim() || 'Duplicados';
     return 'keep';
   }
 
@@ -781,6 +1014,7 @@ async function unzipHtmlFiles(buf) {
     $('download').disabled = !parts.length && !$('pruneEmpty').checked && files.length < 2;
   }
   $('moveName').addEventListener('input', updateSummary);
+  $('brokenName').addEventListener('input', updateSummary);
   $('pruneEmpty').addEventListener('change', updateSummary);
 
   $('download').addEventListener('click', () => {

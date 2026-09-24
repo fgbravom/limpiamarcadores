@@ -1,6 +1,6 @@
 # limpia/marcadores>
 
-Combina los marcadores de varios navegadores, encuentra carpetas repetidas y links duplicados, decide qué hacer con cada uno y descarga un archivo listo para importar de vuelta.
+Combina los marcadores de varios navegadores, encuentra carpetas repetidas, links duplicados y links rotos, decide qué hacer con cada uno y descarga un archivo listo para importar de vuelta.
 
 Todo corre en el navegador. Los archivos no se suben a ningún servidor.
 
@@ -10,7 +10,17 @@ Todo corre en el navegador. Los archivos no se suben a ningún servidor.
 2. Abre `index.html` en el navegador y arrastra uno o varios archivos. Con varios, eliges si se mezclan en una sola estructura o si cada archivo queda en su propia carpeta.
 3. **Carpetas repetidas:** elige qué grupos fundir. El contenido pasa a la carpeta destino, y las subcarpetas con el mismo nombre también se funden. «Imágenes» e «imagenes» cuentan como iguales.
 4. **Marcadores duplicados:** para cada grupo, marca *Mantener*, *Mover* o *Eliminar*, o aplica una acción masiva (conservar el más antiguo, el más reciente o el primero en el árbol).
-5. Descarga el resultado (`<nombre>_limpio.html`) e impórtalo en el navegador. Borra antes los marcadores actuales, o se sumarán a los importados.
+5. **Links rotos:** revisa los links y mueve o elimina los que ya no funcionan (ver abajo).
+6. Descarga el resultado (`<nombre>_limpio.html`) e impórtalo en el navegador. Borra antes los marcadores actuales, o se sumarán a los importados.
+
+### Links rotos
+
+La revisión intenta abrir cada link desde el navegador y separa los resultados en dos niveles:
+
+- **El dominio ya no existe** (consultado vía DNS de Cloudflare): seguro, el sitio completo desapareció.
+- **No se pudo abrir / tiempo agotado:** sospechoso. Muchos sitios que funcionan bloquean que otra página los lea (cabecera `Cross-Origin-Resource-Policy`) y desde JavaScript eso no se distingue de un sitio caído. Hay que confirmarlos a mano.
+
+Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador. La revisión sí contacta a cada sitio, y la consulta DNS envía a Cloudflare solo el nombre de dominio.
 
 ### Límite al combinar archivos
 
