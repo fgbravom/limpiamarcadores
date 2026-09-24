@@ -51,3 +51,7 @@ Son solo `index.html` y `style.css`, sin dependencias ni paso de build.
 ## Créditos
 
 Desarrollado con asistencia de [Claude Code](https://claude.com/claude-code), usando el modelo Claude Opus 5.5 de Anthropic.
+
+## Licencia
+
+[MIT](LICENSE) © 2026 fgbravom. Puedes usar, copiar, modificar y distribuir este código libremente, siempre que mantengas el aviso de copyright y la licencia. Se entrega «tal cual», sin garantías.
