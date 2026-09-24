@@ -70,6 +70,7 @@ Sin dependencias ni paso de build:
 | `style.css` | Los estilos |
 | `core.js` | La lógica pura, sin DOM: leer y exportar marcadores, combinar archivos, fundir carpetas, detectar duplicados, leer el `.zip` de Safari y revisar links |
 | `app.js` | La interfaz: carga de archivos, pestañas, marcas y descarga |
+| `vercel.json` | Cabeceras de seguridad de la versión publicada: solo se ejecutan los scripts propios y no se envía el `Referer` a los sitios revisados |
 
 Los scripts son clásicos (no módulos ES) para que la app funcione abriendo `index.html` con doble clic: los navegadores bloquean los módulos cargados desde `file://`.
 

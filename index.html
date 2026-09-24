@@ -72,7 +72,7 @@
     <!-- ===== Pestaña carpetas ===== -->
     <section id="tab-folders">
       <div class="panel">
-        <p class="sub" style="margin-bottom:10px">Al fundir, todo el contenido de las carpetas marcadas pasa a la carpeta <b>destino</b> y las demás desaparecen.
+        <p class="sub intro">Al fundir, todo el contenido de las carpetas marcadas pasa a la carpeta <b>destino</b> y las demás desaparecen.
           Si adentro hay subcarpetas con el mismo nombre, también se funden. Nombres como «Imágenes» e «imagenes» cuentan como iguales.</p>
         <div class="row">
           <span class="label">Acción masiva</span>
@@ -96,7 +96,7 @@
     <!-- ===== Pestaña marcadores ===== -->
     <section id="tab-links" class="hidden">
       <div class="panel">
-        <p class="sub" style="margin-bottom:10px" id="linksNote"></p>
+        <p class="sub intro" id="linksNote"></p>
         <div class="row">
           <span class="label">Qué cuenta como duplicado</span>
           <label class="chk"><input type="checkbox" data-opt="proto" checked> ignorar http/https</label>
@@ -147,14 +147,14 @@
     <!-- ===== Pestaña links rotos ===== -->
     <section id="tab-broken" class="hidden">
       <div class="panel">
-        <p class="sub" style="margin-bottom:10px">La revisión intenta abrir cada link desde tu navegador y los separa en dos niveles:</p>
+        <p class="sub intro">La revisión intenta abrir cada link desde tu navegador y los separa en dos niveles:</p>
         <ul class="sub levels">
           <li><span class="st st-bad">El dominio ya no existe</span>: <b>seguro</b>. El sitio completo desapareció; se puede borrar sin miedo.</li>
           <li><span class="st st-warn">No se pudo abrir</span> o <span class="st st-warn">Tiempo agotado</span>: <b>sospechoso</b>. Puede estar caído, pero muchos sitios que funcionan
             (Canva, por ejemplo) bloquean que otra página los lea y quedan aquí igual. Ábrelos para confirmar antes de borrar.
             Los Shields de Brave o un bloqueador de anuncios también pueden hacer que un sitio caiga aquí.</li>
         </ul>
-        <p class="sub" style="margin:8px 0 10px">Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador.
+        <p class="sub note">Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador.
           Ojo: esto sí contacta a cada sitio. Con la opción de DNS activada, además se consulta el nombre de dominio (solo el dominio, nunca la ruta) al DNS de Cloudflare.</p>
         <div class="row">
           <button id="bCheck" class="primary">Revisar links</button>
