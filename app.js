@@ -106,7 +106,7 @@
     $('stFGroups').textContent = fgroups.length.toLocaleString('es');
     $('tabF').textContent = fgroups.length;
     renderFiles();
-    $('app').classList.remove('hidden'); $('bar').classList.remove('hidden'); $('exportHelp').classList.add('hidden');
+    $('app').classList.remove('hidden'); $('bar').classList.remove('hidden'); $('exportHelp').classList.add('hidden'); $('story').classList.add('hidden');
     drop.innerHTML = `<strong>${files.length} ${files.length === 1 ? 'archivo cargado' : 'archivos cargados'}</strong> · haz clic o arrastra más archivos para combinarlos`;
     rebuild();
   }

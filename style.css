@@ -24,6 +24,10 @@
     border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 4px 12px 4px 10px; }
   .repo:hover { border-color: var(--accent); color: var(--accent); }
   .repo svg { width: 16px; height: 16px; }
+  .story { color: var(--muted); }
+  .story p { margin: 0; }
+  .story p + p { margin-top: 8px; }
+  .story a { color: var(--accent); }
   .sub { color: var(--muted); margin: 0; }
   .sub.intro { margin-bottom: 10px; }
   .sub.note { margin: 8px 0 10px; }
