@@ -62,7 +62,22 @@ Probado con exports reales de Brave, Comet, Edge, Firefox, Opera y Vivaldi.
 
 ## Desarrollo
 
-Son solo `index.html` y `style.css`, sin dependencias ni paso de build.
+Sin dependencias ni paso de build:
+
+| Archivo | Qué tiene |
+|---|---|
+| `index.html` | La estructura de la página |
+| `style.css` | Los estilos |
+| `core.js` | La lógica pura, sin DOM: leer y exportar marcadores, combinar archivos, fundir carpetas, detectar duplicados, leer el `.zip` de Safari y revisar links |
+| `app.js` | La interfaz: carga de archivos, pestañas, marcas y descarga |
+
+Los scripts son clásicos (no módulos ES) para que la app funcione abriendo `index.html` con doble clic: los navegadores bloquean los módulos cargados desde `file://`.
+
+`core.js` también se puede usar desde Node, lo que sirve para probar la lógica sin navegador:
+
+```js
+const { parseBookmarks, findGroups } = require('./core.js');
+```
 
 ## Créditos
 
