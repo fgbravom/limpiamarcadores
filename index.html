@@ -102,8 +102,10 @@
           <label class="chk"><input type="checkbox" data-opt="proto" checked> ignorar http/https</label>
           <label class="chk"><input type="checkbox" data-opt="www" checked> ignorar «www.»</label>
           <label class="chk"><input type="checkbox" data-opt="slash" checked> ignorar «/» final</label>
-          <label class="chk"><input type="checkbox" data-opt="utm" checked> ignorar parámetros de rastreo (utm_…)</label>
+          <label class="chk"><input type="checkbox" data-opt="utm" checked> ignorar parámetros de rastreo (utm_, spm, fbclid…)</label>
+          <label class="chk"><input type="checkbox" data-opt="locale" checked> ignorar idioma y país (es., cl., m., ?hl=)</label>
           <label class="chk"><input type="checkbox" data-opt="hash"> ignorar #fragmento</label>
+          <label class="chk" title="Agrupa aliexpress.com, cl.aliexpress.com y vivaldi.com/bk/aliexpress-cl. Estos grupos quedan marcados como «parecidos»."><input type="checkbox" data-opt="site" checked> juntar portadas del mismo sitio (aliexpress.com = aliexpress.cl)</label>
         </div>
         <div class="row">
           <span class="label">Acción masiva</span>
@@ -119,6 +121,7 @@
             <option value="move">moverlo a la carpeta de duplicados</option>
           </select>
           <button id="bulkApply">Aplicar a los grupos visibles</button>
+          <label class="chk"><input id="bulkSimilar" type="checkbox"> incluir los grupos «parecidos»</label>
           <button id="reset">Restablecer marcas</button>
         </div>
         <div class="row">
@@ -128,6 +131,7 @@
             <option value="all">Todos los grupos</option>
             <option value="pending">Sin resolver</option>
             <option value="resolved">Resueltos</option>
+            <option value="similar">Parecidos (URLs distintas)</option>
           </select>
           <select id="sort">
             <option value="count">Más copias primero</option>
@@ -382,6 +386,22 @@ function applyMerges(root, plans) {
   return { merged, skipped };
 }
 
+// Parámetros que no cambian la página: rastreo de campañas, redes sociales, tiendas y buscadores
+const TRACKING_PARAMS = /^(utm_.*|fbclid|gclid|dclid|msclkid|yclid|mc_cid|mc_eid|igshid|si|feature|ref|ref_src|referrer|referrerscenario|original_referer|spm|scm|gatewayadapt|algo_pvid|algo_expid|btsid|ws_ab_test|pvid|_ga|_gl|sourceid|ie|oq|aqs|gws_rd|pli)$/i;
+// Idioma o país: es.aliexpress.com, m.youtube.com, ?hl=es. Lista explícita, porque códigos como
+// id., my., go. o ai. suelen ser servicios (id.atlassian.com es el login, no Indonesia).
+const LOCALE_SUB = /^((es|en|pt|fr|de|it|nl|pl|ru|ja|zh|ko|tr|sv|cl|ar|mx|co|pe|uy|ve|ec|bo|py|br|us|uk|ca|au|nz|ie|za|be|ch|at|dk|fi|no|se|gr|cz|ro|hu|jp|cn|kr|tw|hk|sg|in)(-[a-z]{2})?|m|mobile)$/;
+const LOCALE_PARAMS = /^(hl|lang|locale|gl)$/i;
+
+// Nombre del sitio sin subdominios ni TLD: aliexpress.com → aliexpress, amazon.co.uk → amazon.
+// isRoot = el host es el dominio mismo (sin subdominios como pelom-erp.daia.cl).
+function siteName(host) {
+  const p = host.split('.');
+  const sld = p.length >= 3 && /^(co|com|org|net|gob|gov|edu|ac|ne|or)$/.test(p[p.length - 2]);
+  const reg = p.slice(sld ? -3 : -2);
+  return { name: reg[0], isRoot: p.length === reg.length };
+}
+
 function urlKey(href, o) {
   const raw = href.trim();
   let url;
@@ -389,20 +409,37 @@ function urlKey(href, o) {
   if (!/^https?:$/.test(url.protocol)) return raw;
   let host = url.hostname.toLowerCase();
   if (o.www) host = host.replace(/^www\./, '');
+  if (o.locale) {
+    const labels = host.split('.');
+    if (labels.length >= 3 && LOCALE_SUB.test(labels[0])) host = labels.slice(1).join('.');
+  }
   let path = url.pathname;
   if (o.slash) path = path.replace(/\/+$/, '');
   let search = url.search;
-  if (o.utm) {
+  if (o.utm || o.locale) {
     const p = url.searchParams;
-    [...p.keys()].forEach(k => { if (/^(utm_.*|fbclid|gclid|mc_cid|mc_eid)$/i.test(k)) p.delete(k); });
+    [...p.keys()].forEach(k => { if ((o.utm && TRACKING_PARAMS.test(k)) || (o.locale && LOCALE_PARAMS.test(k))) p.delete(k); });
     const qs = p.toString();
     search = qs ? '?' + qs : '';
   }
   const hash = o.hash ? '' : url.hash;
+  if (o.site) {
+    // Vivaldi trae marcadores de socios que redirigen a la portada de la tienda: vivaldi.com/bk/aliexpress-cl
+    const bk = /^\/bk\/([a-z0-9]+)[\w-]*\/?$/i.exec(url.pathname);
+    if (host.replace(/^www\./, '') === 'vivaldi.com' && bk) return 'sitio:' + bk[1].toLowerCase();
+    // Portadas del mismo sitio en otro país: aliexpress.com = aliexpress.cl
+    // (nunca con puerto, localhost ni IP: localhost:3000 y localhost:8080 son apps distintas)
+    const isLocal = url.port || !host.includes('.') || /^[\d.]+$|:/.test(host);
+    if (!isLocal && !path.replace(/\/+$/, '') && !search && !hash) {
+      const s = siteName(host.replace(/^www\./, ''));
+      if (s.isRoot) return 'sitio:' + s.name;
+    }
+  }
   const proto = o.proto ? '' : url.protocol;
   return proto + '//' + host + (url.port ? ':' + url.port : '') + path + search + hash;
 }
 
+// similar = el grupo solo existe gracias a «juntar portadas»: sus URLs llevan a sitios distintos
 function findGroups(links, o) {
   const map = new Map();
   for (const l of links) {
@@ -410,7 +447,10 @@ function findGroups(links, o) {
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(l);
   }
-  return [...map].filter(([, arr]) => arr.length > 1).map(([key, items]) => ({ key, items }));
+  const strict = Object.assign({}, o, { site: false });
+  return [...map].filter(([, arr]) => arr.length > 1).map(([key, items]) => ({
+    key, items, similar: o.site && new Set(items.map(l => urlKey(l.href, strict))).size > 1,
+  }));
 }
 
 // decide(link) -> 'keep' | 'delete' | nombre de la carpeta a la que se mueve
@@ -574,7 +614,7 @@ async function runPool(items, worker, concurrency, signal) {
   const brokenDec = new Map();   // rotos: id -> 'move' | 'delete'
   // Plan de fusión por grupo de carpetas: key -> { on, dest: fid, exclude: Set<fid> }
   const mergePlan = new Map();
-  const opts = { proto: true, www: true, slash: true, utm: true, hash: false };
+  const opts = { proto: true, www: true, slash: true, utm: true, locale: true, hash: false, site: true };
   const limits = { folders: PAGE, links: PAGE, broken: PAGE };
   let tab = 'folders';
 
@@ -810,6 +850,7 @@ async function runPool(items, worker, concurrency, signal) {
     let list = groups.filter(g => {
       if (show === 'pending' && isResolved(g)) return false;
       if (show === 'resolved' && !isResolved(g)) return false;
+      if (show === 'similar' && !g.similar) return false;
       return !q || g.key.toLowerCase().includes(q) || g.items.some(l => matches(l, q));
     });
     const s = $('sort').value;
@@ -842,7 +883,8 @@ async function runPool(items, worker, concurrency, signal) {
       </div>`;
     }).join('');
     return `<div class="group"><div class="ghead"><span class="badge">×${g.items.length}</span>
-      <span class="gurl">${escapeHtml(g.items[0].href)}</span>${status}</div>${items}</div>`;
+      <span class="gurl">${escapeHtml(g.items[0].href)}</span>${g.similar
+        ? '<span class="similar" title="Son portadas del mismo sitio en otro país o redirecciones: revisa antes de borrar">parecidos</span>' : ''}${status}</div>${items}</div>`;
   }
 
   let current = [];
@@ -888,9 +930,12 @@ async function runPool(items, worker, concurrency, signal) {
   });
 
   $('bulkApply').addEventListener('click', () => {
-    const list = visibleGroups();
+    // Los «parecidos» llevan a sitios que pueden ser distintos: solo entran si se pide
+    const all = visibleGroups(), list = $('bulkSimilar').checked ? all : all.filter(g => !g.similar);
     const act = $('bulkAct').value === 'delete' ? 'eliminar' : 'mover';
-    if (!confirm(`Se conservará una copia en ${list.length} grupos y el resto se marcará para ${act}. ¿Seguimos?`)) return;
+    const skipped = all.length - list.length;
+    if (!confirm(`Se conservará una copia en ${list.length} grupos y el resto se marcará para ${act}.` +
+      (skipped ? ` Quedan fuera ${skipped} grupos «parecidos».` : '') + ' ¿Seguimos?')) return;
     const how = $('bulkKeep').value;
     for (const g of list) setGroup(g, pickKeeper(g.items, how));
     renderTab();

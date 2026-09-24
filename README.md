@@ -37,8 +37,11 @@ Se puede configurar si se ignoran:
 - `http` vs `https`
 - el prefijo `www.`
 - la `/` final
-- los parámetros de rastreo (`utm_…`)
+- los parámetros de rastreo (`utm_…`, `fbclid`, `spm`, `si`, `ref`…)
+- el idioma y el país: subdominios como `es.`, `cl.`, `pt-br.` o `m.`, y parámetros como `?hl=es`. Solo se usa una lista de códigos conocidos, porque subdominios como `id.`, `my.` o `excel.` son servicios distintos.
 - el `#fragmento`
+
+Además, **«juntar portadas del mismo sitio»** agrupa las páginas de inicio de un mismo sitio en otro país o dominio (`aliexpress.com` = `aliexpress.cl`) y los marcadores de socios de Vivaldi (`vivaldi.com/bk/aliexpress-cl`). Esos grupos quedan marcados como **parecidos**: pueden ser tiendas o espejos distintos, así que la acción masiva los deja fuera salvo que se marque «incluir los grupos parecidos». Nunca junta sitios con puerto, `localhost` ni IP.
 
 ## Compatibilidad
 

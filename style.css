@@ -81,6 +81,8 @@
   .bar .sum { flex: 1 1 220px; }
   .del-t { color: var(--del); font-weight: 700; } .move-t { color: var(--move); font-weight: 700; }
   .merge-t { color: var(--accent); font-weight: 700; }
+  .similar { background: var(--move-soft); color: var(--move); border-radius: 999px; padding: 1px 9px;
+    font-weight: 700; font-size: 12px; white-space: nowrap; }
   .empty { text-align: center; color: var(--muted); padding: 30px; }
   .hidden { display: none !important; }
   .drop.busy { opacity: .6; pointer-events: none; }
