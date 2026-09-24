@@ -6,6 +6,19 @@ Todo corre en el navegador. Los archivos no se suben a ningún servidor.
 
 **Úsala en [limpiamarcadores.vercel.app](https://limpiamarcadores.vercel.app)**, o descarga el repo y abre `index.html` con doble clic: funciona igual sin conexión.
 
+Es **código abierto** ([MIT](LICENSE)): puedes revisar que tus archivos no salen del navegador, adaptarla o proponer mejoras.
+
+## Por qué existe
+
+Creé esta herramienta para ordenar mis propios marcadores. Llevo más de 10 años guardando links de trabajos, proyectos y etapas de la vida, repartidos en muchos navegadores.
+
+| | Antes | Después |
+|---|---|---|
+| Marcadores | 10.481 | 1.457 |
+| Carpetas | 1.056 | 128 |
+
+Cuando los junté, la mayoría eran copias: solo había unos 1.500 links distintos. Después de unir carpetas y sacar duplicados y links rotos, quedó un 86 % menos. La cifra de antes no cuenta los 798 marcadores de la papelera de Opera.
+
 ## Uso
 
 1. Exporta tus marcadores a HTML desde tu navegador (Chrome, Edge, Brave, Firefox, Safari, Opera, Vivaldi…). La app trae las instrucciones para cada uno. El `.zip` que exporta Safari se puede cargar tal cual.
