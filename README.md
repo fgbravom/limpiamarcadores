@@ -89,7 +89,7 @@ const { parseBookmarks, findGroups } = require('./core.js');
 
 Desarrollado con asistencia de [Claude Code](https://claude.com/claude-code), usando el modelo Claude Opus 5.5 de Anthropic.
 
-Ícono de escoba: «Broom» de [Phosphor Icons](https://phosphoricons.com) (licencia MIT).
+Ícono de escoba: «Broom» de [Phosphor Icons](https://phosphoricons.com) (licencia MIT). Ícono de GitHub: «mark-github» de [Octicons](https://primer.style/octicons) (licencia MIT).
 
 ## Licencia
 
