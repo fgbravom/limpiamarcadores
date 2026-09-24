@@ -44,7 +44,9 @@ Se puede configurar si se ignoran:
 
 Funciona con cualquier archivo en el formato estándar de exportación de marcadores (Netscape Bookmark File), que usan todos los navegadores principales, y con el `.zip` de Safari. Al combinar archivos, solo la primera «barra de marcadores» conserva esa marca en el resultado, para que el navegador no se confunda al importar.
 
-Probado con exports reales de Brave, Comet, Vivaldi y Firefox.
+Probado con exports reales de Brave, Comet, Edge, Firefox, Opera y Vivaldi.
+
+- **Papelera:** Opera incluye su papelera en el export (en la prueba eran 798 marcadores ya borrados). Por defecto queda fuera para que no revivan; se puede incluir con una casilla junto al archivo.
 
 > [!WARNING]
 > **Safari no se ha probado con un export real.** El soporte se basa en el formato estándar y en un `.zip` armado a mano para las pruebas, no en un archivo sacado de Safari. Si usas marcadores de Safari:

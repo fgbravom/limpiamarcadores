@@ -281,8 +281,16 @@ function fileLabel(name) {
   return hit ? hit[0].toUpperCase() + hit.slice(1) : name.replace(/\.(html?|zip)$/i, '');
 }
 
+// Opera (y otros) exportan la papelera como una carpeta más en la raíz
+const TRASH_NAMES = /^(papelera|trash|deleted|deleted items|eliminados|corbeille|lixeira|cestino|papierkorb)$/;
+const isTrash = c => c.type === 'folder' && TRASH_NAMES.test(folderKey(c.name));
+function trashCount(root) {
+  return root.children.filter(isTrash).reduce((s, f) => s + countLinks(f), 0);
+}
+
 // Junta varios árboles en uno y renumera ids para que no choquen.
 // mode 'mix': todo en la misma raíz · 'split': cada archivo dentro de una carpeta con su nombre.
+// Con skipTrash se deja fuera la papelera de ese archivo.
 // Agregar archivos al final no cambia los ids de los anteriores.
 function combineTrees(sources, mode) {
   const root = { type: 'folder', fid: -1, attrs: '', name: '', children: [] };
@@ -296,6 +304,7 @@ function combineTrees(sources, mode) {
   }
   sources.forEach((s, i) => {
     const copy = cloneTree(s.root);
+    if (s.skipTrash) copy.children = copy.children.filter(c => !isTrash(c));
     if (mode === 'split' && sources.length > 1) {
       const wrap = { type: 'folder', fid: fid++, src: i, attrs: ' ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '"',
         name: escapeHtml(s.label), children: copy.children };
@@ -587,7 +596,8 @@ async function runPool(items, worker, concurrency, signal) {
         for (const e of entries) {
           const parsed = parseBookmarks(e.text);
           if (!parsed.links.length) continue;
-          added.push({ name: e.name, label: fileLabel(file.name), parsed, size: e.text.length });
+          const trash = trashCount(parsed.root);
+          added.push({ name: e.name, label: fileLabel(file.name), parsed, size: e.text.length, trash, includeTrash: false });
           any = true;
         }
         if (!any) failed.push(file.name);
@@ -618,9 +628,18 @@ async function runPool(items, worker, concurrency, signal) {
     recombine(false);
   });
   $('fileList').addEventListener('change', e => {
-    const i = e.target.dataset.label;
+    const el = e.target;
+    if (el.dataset.trash !== undefined) {
+      // Cambia qué marcadores existen, así que las marcas hechas dejan de calzar
+      if (hasMarks() && !confirm('Cambiar la papelera borra las marcas de marcadores que ya hiciste. ¿Seguimos?')) { el.checked = !el.checked; return; }
+      files[Number(el.dataset.trash)].includeTrash = el.checked;
+      decisions.clear(); brokenDec.clear();
+      recombine(false);
+      return;
+    }
+    const i = el.dataset.label;
     if (i === undefined) return;
-    files[Number(i)].label = e.target.value.trim() || fileLabel(files[Number(i)].name);
+    files[Number(i)].label = el.value.trim() || fileLabel(files[Number(i)].name);
     recombine(true);
   });
   document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
@@ -629,7 +648,7 @@ async function runPool(items, worker, concurrency, signal) {
 
   // stableIds: los ids de carpeta anteriores siguen apuntando a lo mismo (solo se agregó al final)
   function recombine(stableIds) {
-    original = combineTrees(files.map(f => ({ root: f.parsed.root, label: f.label })), mode);
+    original = combineTrees(files.map(f => ({ root: f.parsed.root, label: f.label, skipTrash: !f.includeTrash })), mode);
     fgroups = findFolderGroups(original.folders);
     const old = new Map(mergePlan);
     mergePlan.clear();
@@ -656,6 +675,8 @@ async function runPool(items, worker, concurrency, signal) {
       <input type="text" data-label="${i}" value="${escapeHtml(f.label)}" size="12" title="Nombre corto del archivo">
       <span class="meta">${escapeHtml(f.name)} · ${f.parsed.links.length.toLocaleString('es')} marcadores · ${f.parsed.folders.length} carpetas · ${mb(f.size)}</span>
       <button data-rm="${i}">Quitar</button>
+      ${f.trash ? `<label class="chk trash-opt"><input type="checkbox" data-trash="${i}" ${f.includeTrash ? 'checked' : ''}>
+        incluir la papelera de este archivo (${f.trash.toLocaleString('es')} marcadores que ya habías borrado; ${f.includeTrash ? 'incluidos' : 'quedan fuera'})</label>` : ''}
       ${/safari/i.test(f.name) ? '<span class="warn safari-warn">⚠ Safari aún no se ha probado con un export real. Revisa que los totales coincidan con tus marcadores y revisa el resultado antes de borrar nada.</span>' : ''}</div>`).join('');
     const size = files.reduce((s, f) => s + f.size, 0);
     $('filesInfo').textContent = files.length > 1 ? `${files.length} archivos · ${mb(size)} en total` : '';
