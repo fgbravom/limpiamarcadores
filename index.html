@@ -9,15 +9,15 @@
 <body>
 <header>
   <h1>limpia/marcadores></h1>
-  <p class="sub">Carga el archivo HTML de marcadores exportado desde cualquier navegador. Todo se procesa aquí mismo: el archivo no se sube a ningún lado.</p>
+  <p class="sub">Carga uno o varios archivos de marcadores exportados desde cualquier navegador. Todo se procesa aquí mismo: los archivos no se suben a ningún lado.</p>
 </header>
 
 <main>
   <div id="drop" class="drop panel">
-    <strong>Arrastra aquí tu archivo de marcadores</strong> o haz clic para elegirlo<br>
-    <small>Chrome, Edge, Brave, Firefox, Safari, Opera, Vivaldi… cualquier export en HTML</small>
+    <strong>Arrastra aquí tus archivos de marcadores</strong> o haz clic para elegirlos<br>
+    <small>Puedes cargar varios a la vez para combinarlos. HTML de Chrome, Edge, Brave, Firefox, Opera, Vivaldi… o el .zip que exporta Safari</small>
   </div>
-  <input id="file" type="file" accept=".html,.htm" hidden>
+  <input id="file" type="file" accept=".html,.htm,.zip" multiple hidden>
 
   <details id="exportHelp" class="panel">
     <summary>Cómo exportar tus marcadores</summary>
@@ -25,7 +25,7 @@
       <li><b>Chrome, Brave, Opera, Vivaldi:</b> administrador de marcadores (Ctrl+Shift+O) → menú ⋮ → <em>Exportar marcadores</em>.</li>
       <li><b>Edge:</b> favoritos (Ctrl+Shift+O) → menú ⋯ → <em>Exportar favoritos</em>.</li>
       <li><b>Firefox:</b> biblioteca (Ctrl+Shift+O) → <em>Importar y respaldar</em> → <em>Exportar marcadores a HTML</em>.</li>
-      <li><b>Safari:</b> <em>Archivo</em> → <em>Exportar</em> → <em>Marcadores</em>.</li>
+      <li><b>Safari:</b> <em>Archivo</em> → <em>Exportar</em> → <em>Marcadores</em> (HTML), o <em>Exportar datos de navegación</em> (.zip, se puede cargar tal cual).</li>
     </ol>
   </details>
 
@@ -38,13 +38,22 @@
         <div class="stat"><b id="stGroups">0</b><span>URLs repetidas</span></div>
         <div class="stat"><b id="stExtra">0</b><span>copias sobrantes</span></div>
       </div>
-      <p class="sub" id="fileName" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
+      <div class="row"><span class="label">Archivos cargados</span><span class="meta" id="filesInfo"></span></div>
+      <div id="fileList" class="filelist"></div>
+      <div class="row hidden" id="modeRow">
+        <span class="label">Al combinar</span>
+        <label class="chk"><input type="radio" name="mode" value="mix" checked> mezclar todo en una sola estructura</label>
+        <label class="chk"><input type="radio" name="mode" value="split"> dejar cada archivo en su propia carpeta</label>
+      </div>
     </div>
 
     <details class="panel">
       <summary>Cómo volver a importar el resultado</summary>
       <ol>
-        <li>Guarda tu archivo original como respaldo. No se modifica.</li>
+        <li>Guarda tus archivos originales como respaldo. No se modifican.</li>
         <li>Descarga el archivo limpio con el botón de abajo.</li>
         <li>Abre el administrador de marcadores de tu navegador (Ctrl+Shift+O), selecciona todo (Ctrl+A) y elimina los marcadores actuales. Si no, el navegador suma los importados a los que ya tienes y vuelven los duplicados.</li>
         <li>Importa el archivo descargado desde la opción <em>Importar marcadores</em> → «Archivo HTML». En Safari es <em>Archivo</em> → <em>Importar desde</em> → <em>Archivo HTML de marcadores</em>.</li>
@@ -104,7 +113,7 @@
           <span>y el resto</span>
           <select id="bulkAct">
             <option value="delete">eliminarlo</option>
-            <option value="move">moverlo a la carpeta</option>
+            <option value="move">moverlo a la carpeta de duplicados</option>
           </select>
           <button id="bulkApply">Aplicar a los grupos visibles</button>
           <button id="reset">Restablecer marcas</button>
@@ -127,13 +136,14 @@
       <p class="sub" id="shown"></p>
       <div id="groups"></div>
     </section>
+
   </section>
 </main>
 
 <div id="bar" class="bar hidden">
   <div class="inner">
     <div class="sum" id="summary"></div>
-    <label class="chk">Carpeta destino: <input id="moveName" type="text" value="Duplicados" size="14"></label>
+    <label class="chk">Carpeta para duplicados: <input id="moveName" type="text" value="Duplicados" size="14"></label>
     <label class="chk"><input id="pruneEmpty" type="checkbox"> quitar carpetas que queden vacías</label>
     <button id="download" class="primary">Descargar marcadores limpios</button>
   </div>
@@ -209,16 +219,54 @@ function indexTree(root) {
 }
 
 function cloneTree(f) {
-  return { type: 'folder', fid: f.fid, attrs: f.attrs, name: f.name,
+  return { type: 'folder', fid: f.fid, src: f.src, attrs: f.attrs, name: f.name,
     children: f.children.map(c => c.type === 'folder' ? cloneTree(c)
-      : { type: 'link', id: c.id, attrs: c.attrs, title: c.title, href: c.href, addDate: c.addDate }) };
+      : { type: 'link', id: c.id, src: c.src, attrs: c.attrs, title: c.title, href: c.href, addDate: c.addDate }) };
+}
+
+// Nombre corto para un archivo: el navegador, si aparece en el nombre
+function fileLabel(name) {
+  const known = ['brave', 'chrome', 'chromium', 'edge', 'firefox', 'safari', 'opera', 'vivaldi', 'comet', 'arc', 'yandex', 'waterfox', 'librewolf', 'zen'];
+  const n = name.toLowerCase();
+  const hit = known.find(k => n.includes(k));
+  return hit ? hit[0].toUpperCase() + hit.slice(1) : name.replace(/\.(html?|zip)$/i, '');
+}
+
+// Junta varios árboles en uno y renumera ids para que no choquen.
+// mode 'mix': todo en la misma raíz · 'split': cada archivo dentro de una carpeta con su nombre.
+// Agregar archivos al final no cambia los ids de los anteriores.
+function combineTrees(sources, mode) {
+  const root = { type: 'folder', fid: -1, attrs: '', name: '', children: [] };
+  let fid = 0, lid = 0;
+  const now = Math.floor(Date.now() / 1000);
+  function renum(f, src) {
+    for (const c of f.children) {
+      c.src = src;
+      if (c.type === 'folder') { c.fid = fid++; renum(c, src); } else c.id = lid++;
+    }
+  }
+  sources.forEach((s, i) => {
+    const copy = cloneTree(s.root);
+    if (mode === 'split' && sources.length > 1) {
+      const wrap = { type: 'folder', fid: fid++, src: i, attrs: ' ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '"',
+        name: escapeHtml(s.label), children: copy.children };
+      renum(wrap, i);
+      root.children.push(wrap);
+    } else {
+      renum(copy, i);
+      root.children.push(...copy.children);
+    }
+  });
+  return indexTree(root);
 }
 
 function countLinks(f) {
   return f.children.reduce((s, c) => s + (c.type === 'folder' ? countLinks(c) : 1), 0);
 }
-function contains(ancestor, node) {
-  return ancestor.children.some(c => c === node || (c.type === 'folder' && contains(c, node)));
+// ¿node está dentro de ancestor? Usa los punteros parent de indexTree.
+function isInside(node, ancestor) {
+  for (let p = node.parent; p; p = p.parent) if (p === ancestor) return true;
+  return false;
 }
 
 function findFolderGroups(folders) {
@@ -240,32 +288,31 @@ function findFolderGroups(folders) {
 // plans: [{ dest: fid, sources: [fid, ...] }] en orden de aplicación.
 // Trabaja sobre un árbol ya clonado. Devuelve cuántas fusiones hizo y cuáles omitió.
 function applyMerges(root, plans) {
-  const byFid = new Map();
-  (function walk(f) { for (const c of f.children) if (c.type === 'folder') { byFid.set(c.fid, c); walk(c); } })(root);
+  const byFid = new Map(), parent = new Map();
+  (function walk(f) { for (const c of f.children) if (c.type === 'folder') { byFid.set(c.fid, c); parent.set(c, f); walk(c); } })(root);
   const redirect = new Map();
   const resolve = fid => { while (redirect.has(fid)) fid = redirect.get(fid); return byFid.get(fid); };
-  const parentOf = node => {
-    let found = null;
-    (function walk(f) { for (const c of f.children) { if (c === node) { found = f; return; } if (c.type === 'folder') walk(c); if (found) return; } })(root);
-    return found;
-  };
+  const inside = (node, anc) => { for (let p = parent.get(node); p; p = parent.get(p)) if (p === anc) return true; return false; };
+  let merged = 0; const skipped = [];
   function mergeInto(src, dest) {
-    const p = parentOf(src);
-    if (p) p.children.splice(p.children.indexOf(src), 1);
+    const p = parent.get(src);
+    if (p) { const i = p.children.indexOf(src); if (i >= 0) p.children.splice(i, 1); }
+    parent.delete(src);
     redirect.set(src.fid, dest.fid);
     merged++;
-    for (const c of src.children) {
-      const twin = c.type === 'folder' && dest.children.find(d => d.type === 'folder' && folderKey(d.name) === folderKey(c.name));
-      if (twin) mergeInto(c, twin); else dest.children.push(c);
-    }
+    const kids = src.children;
     src.children = [];
+    for (const c of kids) {
+      const twin = c.type === 'folder' && dest.children.find(d => d.type === 'folder' && folderKey(d.name) === folderKey(c.name));
+      if (twin) mergeInto(c, twin);
+      else { dest.children.push(c); if (c.type === 'folder') parent.set(c, dest); }
+    }
   }
-  let merged = 0; const skipped = [];
   for (const plan of plans) {
     for (const sfid of plan.sources) {
       const dest = resolve(plan.dest), src = resolve(sfid);
       if (!dest || !src || src === dest) continue;
-      if (contains(src, dest)) { skipped.push(sfid); continue; }
+      if (inside(dest, src)) { skipped.push(sfid); continue; }
       mergeInto(src, dest);
     }
   }
@@ -303,9 +350,10 @@ function findGroups(links, o) {
   return [...map].filter(([, arr]) => arr.length > 1).map(([key, items]) => ({ key, items }));
 }
 
-// decisions: Map id -> 'keep' | 'move' | 'delete' (ausente = keep)
-function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
-  const moved = [];
+// decide(link) -> 'keep' | 'delete' | nombre de la carpeta a la que se mueve
+function serializeBookmarks(root, decide, pruneEmpty) {
+  const moved = new Map();
+  let toolbarSeen = false;
   const out = ['<!DOCTYPE NETSCAPE-Bookmark-file-1>',
     '<!-- This is an automatically generated file.',
     '     It will be read and overwritten.',
@@ -314,16 +362,21 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
     '<TITLE>Bookmarks</TITLE>',
     '<H1>Bookmarks</H1>'];
   const linkLine = (l, ind) => ind + '<DT><A' + l.attrs + '>' + l.title + '</A>';
+  const addMoved = (d, l) => { if (!moved.has(d)) moved.set(d, []); moved.get(d).push(l); };
   function hasContent(f) {
-    return f.children.some(c => c.type === 'folder'
-      ? (!pruneEmpty || hasContent(c))
-      : (decisions.get(c.id) || 'keep') === 'keep');
+    return f.children.some(c => c.type === 'folder' ? (!pruneEmpty || hasContent(c)) : decide(c) === 'keep');
   }
   function collectMoved(f) {
     for (const c of f.children) {
       if (c.type === 'folder') collectMoved(c);
-      else if (decisions.get(c.id) === 'move') moved.push(c);
+      else { const d = decide(c); if (d !== 'keep' && d !== 'delete') addMoved(d, c); }
     }
+  }
+  // Al combinar archivos puede haber varias barras de marcadores: solo la primera conserva la marca
+  function folderAttrs(attrs) {
+    if (!/\sPERSONAL_TOOLBAR_FOLDER="true"/i.test(attrs)) return attrs;
+    if (!toolbarSeen) { toolbarSeen = true; return attrs; }
+    return attrs.replace(/\s+PERSONAL_TOOLBAR_FOLDER="true"/i, '');
   }
   function walk(f, depth, extra) {
     const ind = '    '.repeat(depth);
@@ -331,69 +384,172 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
     for (const c of f.children) {
       if (c.type === 'folder') {
         if (pruneEmpty && !hasContent(c)) { collectMoved(c); continue; }
-        out.push(ind + '    <DT><H3' + c.attrs + '>' + c.name + '</H3>');
+        out.push(ind + '    <DT><H3' + folderAttrs(c.attrs) + '>' + c.name + '</H3>');
         walk(c, depth + 1);
       } else {
-        const d = decisions.get(c.id) || 'keep';
+        const d = decide(c);
         if (d === 'keep') out.push(linkLine(c, ind + '    '));
-        else if (d === 'move') moved.push(c);
+        else if (d !== 'delete') addMoved(d, c);
       }
     }
     if (extra) extra(ind + '    ');
     out.push(ind + '</DL><p>');
   }
   walk(root, 0, ind => {
-    if (!moved.length) return;
     const now = Math.floor(Date.now() / 1000);
-    out.push(ind + '<DT><H3 ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '">' + escapeHtml(moveName || 'Duplicados') + '</H3>');
-    out.push(ind + '<DL><p>');
-    for (const l of moved) out.push(linkLine(l, ind + '    '));
-    out.push(ind + '</DL><p>');
+    for (const [name, list] of moved) {
+      out.push(ind + '<DT><H3 ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '">' + escapeHtml(name) + '</H3>');
+      out.push(ind + '<DL><p>');
+      for (const l of list) out.push(linkLine(l, ind + '    '));
+      out.push(ind + '</DL><p>');
+    }
   });
-  return { html: out.join('\n') + '\n', movedCount: moved.length };
+  return { html: out.join('\n') + '\n', movedCount: [...moved.values()].reduce((s, a) => s + a.length, 0) };
 }
+
+// Lector mínimo de ZIP (el export de Safari): devuelve los .html que contiene.
+async function unzipHtmlFiles(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('ZIP inválido');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = [];
+  for (let n = 0; n < count && dv.getUint32(p, true) === 0x02014b50; n++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const loff = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+    p += 46 + nlen + xlen + clen;
+    if (!/\.html?$/i.test(name) || /(^|\/)__MACOSX\//.test(name)) continue;
+    const start = loff + 30 + dv.getUint16(loff + 26, true) + dv.getUint16(loff + 28, true);
+    const data = u8.subarray(start, start + csize);
+    let bytes;
+    if (method === 0) bytes = data;
+    else if (method === 8) bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    else continue;
+    out.push({ name: name.split(/[\\/]/).pop(), text: new TextDecoder().decode(bytes) });
+  }
+  return out;
+}
+
 // ===== CORE-END =====
 
 (() => {
   const $ = id => document.getElementById(id);
-  let original = null, work = null, fileName = '';
+  const PAGE = 200;
+  const SOFT_LIMIT = 60000; // marcadores; sobre esto la página se pone lenta
+  let files = [], mode = 'mix';
+  let original = null, work = null;
   let fgroups = [], groups = [], mergeResult = { merged: 0, skipped: [] };
-  const decisions = new Map();
+  const decisions = new Map();   // duplicados: id -> 'move' | 'delete'
   // Plan de fusión por grupo de carpetas: key -> { on, dest: fid, exclude: Set<fid> }
   const mergePlan = new Map();
   const opts = { proto: true, www: true, slash: true, utm: true, hash: false };
+  const limits = { folders: PAGE, links: PAGE };
   let tab = 'folders';
 
+  // ---------- Carga de archivos ----------
   const drop = $('drop'), fileInput = $('file');
   drop.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => fileInput.files[0] && load(fileInput.files[0]));
+  fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = ''; });
   ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', e => e.dataTransfer.files[0] && load(e.dataTransfer.files[0]));
+  drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 
-  function load(file) {
-    const r = new FileReader();
-    r.onload = () => {
-      const parsed = parseBookmarks(r.result);
-      if (!parsed.links.length) { alert('No se encontraron marcadores en ese archivo.'); return; }
-      original = parsed; fileName = file.name;
-      decisions.clear(); mergePlan.clear();
-      fgroups = findFolderGroups(original.folders);
-      for (const g of fgroups) mergePlan.set(g.key, { on: false, dest: g.defaultDest, exclude: new Set() });
-      $('stTotal').textContent = original.links.length.toLocaleString('es');
-      $('stFolders').textContent = original.folders.length.toLocaleString('es');
-      $('stFGroups').textContent = fgroups.length.toLocaleString('es');
-      $('tabF').textContent = fgroups.length;
-      $('fileName').textContent = 'Archivo: ' + file.name;
-      $('app').classList.remove('hidden'); $('bar').classList.remove('hidden'); $('exportHelp').classList.add('hidden');
-      drop.innerHTML = '<strong>' + escapeHtml(file.name) + '</strong> cargado · haz clic o arrastra otro archivo para reemplazarlo';
-      fileInput.value = '';
-      rebuild();
-    };
-    r.readAsText(file, 'utf-8');
+  const hasMarks = () => decisions.size || [...mergePlan.values()].some(p => p.on);
+
+  async function addFiles(list) {
+    if (!list.length) return;
+    drop.classList.add('busy');
+    const added = [], failed = [];
+    for (const file of list) {
+      try {
+        const entries = /\.zip$/i.test(file.name)
+          ? (await unzipHtmlFiles(await file.arrayBuffer())).map(e => ({ name: file.name + ' › ' + e.name, text: e.text }))
+          : [{ name: file.name, text: await file.text() }];
+        let any = false;
+        for (const e of entries) {
+          const parsed = parseBookmarks(e.text);
+          if (!parsed.links.length) continue;
+          added.push({ name: e.name, label: fileLabel(file.name), parsed, size: e.text.length });
+          any = true;
+        }
+        if (!any) failed.push(file.name);
+      } catch (e) { failed.push(file.name); }
+    }
+    drop.classList.remove('busy');
+    if (failed.length) alert('No se encontraron marcadores en: ' + failed.join(', '));
+    if (!added.length) return;
+    const total = files.concat(added).reduce((s, f) => s + f.parsed.links.length, 0);
+    if (total > SOFT_LIMIT && !confirm(`Vas a tener ${total.toLocaleString('es')} marcadores cargados. Sobre ${SOFT_LIMIT.toLocaleString('es')} la página puede ponerse lenta. ¿Seguimos?`)) return;
+    // Etiquetas únicas: «Brave», «Brave (2)»…
+    for (const f of added) {
+      let label = f.label, n = 2;
+      while (files.some(x => x.label === label)) label = f.label + ' (' + n++ + ')';
+      f.label = label;
+      files.push(f);
+    }
+    recombine(true);
   }
 
-  // Árbol de trabajo = original + fusiones de carpetas. Los duplicados se buscan sobre él.
+  $('fileList').addEventListener('click', e => {
+    const b = e.target.closest('button[data-rm]');
+    if (!b) return;
+    if (hasMarks() && !confirm('Quitar un archivo borra las marcas de marcadores que ya hiciste. ¿Seguimos?')) return;
+    files.splice(Number(b.dataset.rm), 1);
+    decisions.clear();
+    if (!files.length) { location.reload(); return; }
+    recombine(false);
+  });
+  $('fileList').addEventListener('change', e => {
+    const i = e.target.dataset.label;
+    if (i === undefined) return;
+    files[Number(i)].label = e.target.value.trim() || fileLabel(files[Number(i)].name);
+    recombine(true);
+  });
+  document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
+    mode = r.value; recombine(false);
+  }));
+
+  // stableIds: los ids de carpeta anteriores siguen apuntando a lo mismo (solo se agregó al final)
+  function recombine(stableIds) {
+    original = combineTrees(files.map(f => ({ root: f.parsed.root, label: f.label })), mode);
+    fgroups = findFolderGroups(original.folders);
+    const old = new Map(mergePlan);
+    mergePlan.clear();
+    for (const g of fgroups) {
+      const fids = new Set(g.items.map(i => i.f.fid));
+      const o = old.get(g.key);
+      mergePlan.set(g.key, o && stableIds && fids.has(o.dest)
+        ? { on: o.on, dest: o.dest, exclude: new Set([...o.exclude].filter(x => fids.has(x))) }
+        : { on: o ? o.on : false, dest: g.defaultDest, exclude: new Set() });
+    }
+    $('stTotal').textContent = original.links.length.toLocaleString('es');
+    $('stFolders').textContent = original.folders.length.toLocaleString('es');
+    $('stFGroups').textContent = fgroups.length.toLocaleString('es');
+    $('tabF').textContent = fgroups.length;
+    renderFiles();
+    $('app').classList.remove('hidden'); $('bar').classList.remove('hidden'); $('exportHelp').classList.add('hidden');
+    drop.innerHTML = `<strong>${files.length} ${files.length === 1 ? 'archivo cargado' : 'archivos cargados'}</strong> · haz clic o arrastra más archivos para combinarlos`;
+    rebuild();
+  }
+
+  function renderFiles() {
+    const mb = n => (n / 1048576).toFixed(1) + ' MB';
+    $('fileList').innerHTML = files.map((f, i) => `<div class="frow">
+      <input type="text" data-label="${i}" value="${escapeHtml(f.label)}" size="12" title="Nombre corto del archivo">
+      <span class="meta">${escapeHtml(f.name)} · ${f.parsed.links.length.toLocaleString('es')} marcadores · ${f.parsed.folders.length} carpetas · ${mb(f.size)}</span>
+      <button data-rm="${i}">Quitar</button></div>`).join('');
+    const size = files.reduce((s, f) => s + f.size, 0);
+    $('filesInfo').textContent = files.length > 1 ? `${files.length} archivos · ${mb(size)} en total` : '';
+    $('modeRow').classList.toggle('hidden', files.length < 2);
+  }
+
+  // Árbol de trabajo = archivos combinados + fusiones de carpetas. Los duplicados se buscan sobre él.
   function rebuild() {
     const root = cloneTree(original.root);
     const plans = fgroups.filter(g => mergePlan.get(g.key).on).map(g => {
@@ -420,8 +576,7 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
   }
 
   function renderTab() {
-    $('tab-folders').classList.toggle('hidden', tab !== 'folders');
-    $('tab-links').classList.toggle('hidden', tab !== 'links');
+    for (const t of ['folders', 'links']) $('tab-' + t).classList.toggle('hidden', tab !== t);
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     if (tab === 'folders') renderFolders(); else renderLinks();
     updateSummary();
@@ -433,6 +588,13 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
 
   const fmtDate = t => t ? new Date(t * 1000).toLocaleDateString('es', { year: 'numeric', month: 'short', day: 'numeric' }) : 's/f';
   const fmtPath = p => escapeHtml(p.join(' › ') || '(raíz)');
+  const srcTag = x => files.length > 1 && files[x.src] ? ` <span class="src">${escapeHtml(files[x.src].label)}</span>` : '';
+  const moreBtn = (key, shown, total) => shown < total
+    ? `<button class="more" data-more="${key}">Mostrar ${Math.min(PAGE, total - shown)} más (quedan ${total - shown})</button>` : '';
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button[data-more]');
+    if (b) { limits[b.dataset.more] += PAGE; renderTab(); }
+  });
 
   // ---------- Carpetas ----------
   let fcurrent = [];
@@ -450,7 +612,7 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
   function fgroupHtml(g) {
     const p = mergePlan.get(g.key);
     const destF = g.items.find(i => i.f.fid === p.dest).f;
-    const blocked = i => i.f.fid !== p.dest && contains(i.f, destF);
+    const blocked = i => i.f.fid !== p.dest && isInside(destF, i.f);
     const srcCount = g.items.filter(i => i.f.fid !== p.dest && !p.exclude.has(i.f.fid) && !blocked(i)).length;
     const status = p.on ? (srcCount ? `<span class="done">✓ se funden ${srcCount + 1} en una</span>` : '<span class="warn">nada que fundir</span>') : '';
     const names = [...new Set(g.items.map(i => decodeEntities(i.f.name)))].join(' / ');
@@ -460,7 +622,7 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
       const subs = i.f.children.filter(c => c.type === 'folder').length;
       return `<div class="item ${cls}">
         <label class="chk"><input type="radio" name="dest-${escapeHtml(g.key)}" data-dest="${i.f.fid}" ${isDest ? 'checked' : ''}> Destino</label>
-        <div class="ititle"><b>${fmtPath(i.f.path)}</b>
+        <div class="ititle"><b>${fmtPath(i.f.path)}</b>${srcTag(i.f)}
           <div class="meta">${i.links} marcadores · ${subs} subcarpetas${blk ? ' · <span class="warn">contiene a la carpeta destino, no se puede fundir</span>' : ''}</div></div>
         ${isDest ? '<span class="meta">recibe el contenido</span>'
           : `<label class="chk"><input type="checkbox" data-inc="${i.f.fid}" ${inc ? 'checked' : ''} ${blk ? 'disabled' : ''}> incluir</label>`}
@@ -473,10 +635,11 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
 
   function renderFolders() {
     fcurrent = visibleFGroups();
-    $('fgroups').innerHTML = fcurrent.length ? fcurrent.map(fgroupHtml).join('')
+    const shown = fcurrent.slice(0, limits.folders);
+    $('fgroups').innerHTML = shown.length ? shown.map(fgroupHtml).join('') + moreBtn('folders', shown.length, fcurrent.length)
       : '<div class="empty">No hay carpetas repetidas que coincidan.</div>';
     const sk = mergeResult.skipped.length;
-    $('fShown').textContent = `Mostrando ${fcurrent.length} de ${fgroups.length} grupos` +
+    $('fShown').textContent = `${fcurrent.length} de ${fgroups.length} grupos` +
       (sk ? ` · ${sk} fusiones omitidas porque una carpeta contenía a su destino` : '');
   }
 
@@ -492,12 +655,14 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
   $('fAll').addEventListener('click', () => { visibleFGroups().forEach(g => { mergePlan.get(g.key).on = true; }); rebuild(); });
   $('fNone').addEventListener('click', () => { mergePlan.forEach(p => { p.on = false; }); rebuild(); });
   let ft;
-  $('fSearch').addEventListener('input', () => { clearTimeout(ft); ft = setTimeout(renderFolders, 150); });
-  $('fShow').addEventListener('change', renderFolders);
+  $('fSearch').addEventListener('input', () => { clearTimeout(ft); ft = setTimeout(() => { limits.folders = PAGE; renderFolders(); }, 150); });
+  $('fShow').addEventListener('change', () => { limits.folders = PAGE; renderFolders(); });
 
-  // ---------- Marcadores ----------
+  // ---------- Marcadores duplicados ----------
   const dec = l => decisions.get(l.id) || 'keep';
   const isResolved = g => g.items.filter(l => dec(l) === 'keep').length <= 1;
+  const matches = (l, q) => l.href.toLowerCase().includes(q) ||
+    decodeEntities(l.title).toLowerCase().includes(q) || l.path.join('/').toLowerCase().includes(q);
 
   function visibleGroups() {
     const q = $('search').value.trim().toLowerCase();
@@ -505,9 +670,7 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
     let list = groups.filter(g => {
       if (show === 'pending' && isResolved(g)) return false;
       if (show === 'resolved' && !isResolved(g)) return false;
-      if (!q) return true;
-      return g.key.toLowerCase().includes(q) || g.items.some(l =>
-        decodeEntities(l.title).toLowerCase().includes(q) || l.path.join('/').toLowerCase().includes(q));
+      return !q || g.key.toLowerCase().includes(q) || g.items.some(l => matches(l, q));
     });
     const s = $('sort').value;
     if (s === 'count') list = list.slice().sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key));
@@ -515,18 +678,21 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
     return list;
   }
 
-  function groupHtml(g, gi) {
+  function segHtml(id, d, attr) {
+    return '<div class="seg">' + ['keep', 'move', 'delete'].map(a =>
+      `<button ${attr}="${a}" data-id="${id}" class="${d === a ? 'on' : ''}" data-a-style="${a}">${{ keep: 'Mantener', move: 'Mover', delete: 'Eliminar' }[a]}</button>`).join('') + '</div>';
+  }
+
+  function groupHtml(g) {
     const kept = g.items.filter(l => dec(l) === 'keep').length;
     const status = kept === 0 ? '<span class="warn">⚠ no se conserva ninguna copia</span>'
       : kept === 1 ? '<span class="done">✓ resuelto</span>' : '';
     const items = g.items.map(l => {
       const d = dec(l);
       const title = decodeEntities(l.title) || '(sin título)';
-      const seg = ['keep', 'move', 'delete'].map(a =>
-        `<button data-a="${a}" data-id="${l.id}" class="${d === a ? 'on' : ''}">${{ keep: 'Mantener', move: 'Mover', delete: 'Eliminar' }[a]}</button>`).join('');
       return `<div class="item s-${d}">
-        <div class="seg">${seg}</div>
-        <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>
+        ${segHtml(l.id, d, 'data-a')}
+        <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>${srcTag(l)}
           <div class="meta">📁 ${fmtPath(l.path)} · ${fmtDate(l.addDate)}${l.href.trim() !== g.items[0].href.trim() ? ' · ' + escapeHtml(l.href) : ''}</div></div>
         <button class="only" data-only="${l.id}" title="Conservar este y aplicar la acción masiva al resto">Solo este</button>
       </div>`;
@@ -538,16 +704,17 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
   let current = [];
   function renderLinks() {
     current = visibleGroups();
-    $('groups').innerHTML = current.length ? current.map(groupHtml).join('')
+    const shown = current.slice(0, limits.links);
+    $('groups').innerHTML = shown.length ? shown.map(groupHtml).join('') + moreBtn('links', shown.length, current.length)
       : '<div class="empty">No hay grupos que coincidan.</div>';
-    $('shown').textContent = `Mostrando ${current.length} de ${groups.length} grupos`;
+    $('shown').textContent = `${current.length} de ${groups.length} grupos`;
   }
 
-  function pickKeeper(items, mode) {
-    if (mode === 'first') return items[0];
+  function pickKeeper(items, how) {
+    if (how === 'first') return items[0];
     const withDate = items.filter(l => l.addDate);
     if (!withDate.length) return items[0];
-    return withDate.reduce((a, b) => (mode === 'oldest' ? b.addDate < a.addDate : b.addDate > a.addDate) ? b : a);
+    return withDate.reduce((a, b) => (how === 'oldest' ? b.addDate < a.addDate : b.addDate > a.addDate) ? b : a);
   }
 
   function setGroup(g, keeper) {
@@ -557,18 +724,11 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
     }
   }
 
-  // Redibuja un único grupo, sin reconstruir toda la lista
-  function rerenderGroup(gi) {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = groupHtml(current[gi], gi);
-    $('groups').children[gi].replaceWith(tmp.firstElementChild);
-    updateSummary();
-  }
-
   $('groups').addEventListener('click', e => {
     const b = e.target.closest('button');
-    if (!b) return;
-    const gi = [...$('groups').children].indexOf(b.closest('.group'));
+    if (!b || b.dataset.more) return;
+    const el = b.closest('.group');
+    const gi = [...$('groups').children].indexOf(el);
     if (b.dataset.a) {
       const id = Number(b.dataset.id);
       if (b.dataset.a === 'keep') decisions.delete(id); else decisions.set(id, b.dataset.a);
@@ -576,48 +736,60 @@ function serializeBookmarks(root, decisions, moveName, pruneEmpty) {
       const g = current[gi];
       setGroup(g, g.items.find(l => l.id === Number(b.dataset.only)));
     }
-    rerenderGroup(gi);
+    // Redibuja solo este grupo
+    const tmp = document.createElement('div');
+    tmp.innerHTML = groupHtml(current[gi]);
+    el.replaceWith(tmp.firstElementChild);
+    updateSummary();
   });
 
   $('bulkApply').addEventListener('click', () => {
     const list = visibleGroups();
     const act = $('bulkAct').value === 'delete' ? 'eliminar' : 'mover';
     if (!confirm(`Se conservará una copia en ${list.length} grupos y el resto se marcará para ${act}. ¿Seguimos?`)) return;
-    const mode = $('bulkKeep').value;
-    for (const g of list) setGroup(g, pickKeeper(g.items, mode));
+    const how = $('bulkKeep').value;
+    for (const g of list) setGroup(g, pickKeeper(g.items, how));
     renderTab();
   });
-  $('reset').addEventListener('click', () => { if (confirm('¿Quitar todas las marcas de marcadores?')) { decisions.clear(); renderTab(); } });
+  $('reset').addEventListener('click', () => { if (confirm('¿Quitar todas las marcas de duplicados?')) { decisions.clear(); renderTab(); } });
   document.querySelectorAll('[data-opt]').forEach(cb => cb.addEventListener('change', () => {
     opts[cb.dataset.opt] = cb.checked; recomputeLinks();
   }));
   let t;
-  $('search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderLinks, 150); });
-  $('show').addEventListener('change', renderLinks);
-  $('sort').addEventListener('change', renderLinks);
+  $('search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { limits.links = PAGE; renderLinks(); }, 150); });
+  $('show').addEventListener('change', () => { limits.links = PAGE; renderLinks(); });
+  $('sort').addEventListener('change', () => { limits.links = PAGE; renderLinks(); });
 
   // ---------- Resumen y descarga ----------
+  // Decisión final de cada marcador: 'keep', 'delete' o la carpeta a la que se mueve
+  function decide(l) {
+    const d = decisions.get(l.id);
+    if (d === 'delete') return 'delete';
+    if (d === 'move') return $('moveName').value.trim() || 'Duplicados';
+    return 'keep';
+  }
+
   function updateSummary() {
-    let del = 0, mov = 0;
-    for (const v of decisions.values()) { if (v === 'delete') del++; else if (v === 'move') mov++; }
-    const mer = mergeResult.merged;
-    const name = escapeHtml($('moveName').value || 'Duplicados');
+    if (!work) return;
+    const counts = new Map();
+    for (const l of work.links) { const d = decide(l); if (d !== 'keep') counts.set(d, (counts.get(d) || 0) + 1); }
     const parts = [];
-    if (mer) parts.push(`<span class="merge-t">${mer}</span> carpetas fundidas`);
-    if (del) parts.push(`<span class="del-t">${del}</span> marcadores para eliminar`);
-    if (mov) parts.push(`<span class="move-t">${mov}</span> para mover a «${name}»`);
-    $('summary').innerHTML = parts.length ? parts.join(' · ') : 'Todavía no has marcado cambios.';
-    $('download').disabled = !(del || mov || mer) && !$('pruneEmpty').checked;
+    if (mergeResult.merged) parts.push(`<span class="merge-t">${mergeResult.merged}</span> carpetas fundidas`);
+    if (counts.get('delete')) parts.push(`<span class="del-t">${counts.get('delete')}</span> marcadores para eliminar`);
+    for (const [name, n] of counts) if (name !== 'delete') parts.push(`<span class="move-t">${n}</span> para mover a «${escapeHtml(name)}»`);
+    $('summary').innerHTML = parts.length ? parts.join(' · ') : files.length > 1 ? 'Archivos combinados, sin otros cambios.' : 'Todavía no has marcado cambios.';
+    $('download').disabled = !parts.length && !$('pruneEmpty').checked && files.length < 2;
   }
   $('moveName').addEventListener('input', updateSummary);
   $('pruneEmpty').addEventListener('change', updateSummary);
 
   $('download').addEventListener('click', () => {
-    const { html } = serializeBookmarks(work.root, decisions, $('moveName').value.trim(), $('pruneEmpty').checked);
+    const { html } = serializeBookmarks(work.root, decide, $('pruneEmpty').checked);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = fileName.replace(/\.html?$/i, '') + '_limpio.html';
+    a.download = files.length > 1 ? 'marcadores_combinados_limpio.html'
+      : files[0].name.split(' › ')[0].replace(/\.(html?|zip)$/i, '') + '_limpio.html';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
