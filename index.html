@@ -327,10 +327,15 @@ function isInside(node, ancestor) {
   return false;
 }
 
+// Cada navegador le pone otro nombre a la barra («Barra de marcadores», «Barra de favoritos»,
+// «Marcadores»…), así que las barras se agrupan por su marca y no por el nombre.
+const TOOLBAR_KEY = '(barras de marcadores)';
+const isToolbar = f => /\sPERSONAL_TOOLBAR_FOLDER="true"/i.test(f.attrs);
+
 function findFolderGroups(folders) {
   const map = new Map();
   for (const f of folders) {
-    const k = folderKey(f.name);
+    const k = isToolbar(f) ? TOOLBAR_KEY : folderKey(f.name);
     if (!k) continue;
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(f);

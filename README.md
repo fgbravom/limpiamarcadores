@@ -46,6 +46,7 @@ Funciona con cualquier archivo en el formato estándar de exportación de marcad
 
 Probado con exports reales de Brave, Comet, Edge, Firefox, Opera y Vivaldi.
 
+- **Barras de marcadores:** cada navegador le pone otro nombre («Barra de marcadores», «Barra de favoritos», «Marcadores»…). La app las reconoce por su marca interna y las agrupa juntas para fundirlas, aunque se llamen distinto.
 - **Papelera:** Opera incluye su papelera en el export (en la prueba eran 798 marcadores ya borrados). Por defecto queda fuera para que no revivan; se puede incluir con una casilla junto al archivo.
 
 > [!WARNING]
