@@ -4,10 +4,12 @@ Combina los marcadores de varios navegadores, encuentra carpetas repetidas, link
 
 Todo corre en el navegador. Los archivos no se suben a ningún servidor.
 
+**Úsala en [limpiamarcadores.vercel.app](https://limpiamarcadores.vercel.app)**, o descarga el repo y abre `index.html` con doble clic: funciona igual sin conexión.
+
 ## Uso
 
 1. Exporta tus marcadores a HTML desde tu navegador (Chrome, Edge, Brave, Firefox, Safari, Opera, Vivaldi…). La app trae las instrucciones para cada uno. El `.zip` que exporta Safari se puede cargar tal cual.
-2. Abre `index.html` en el navegador y arrastra uno o varios archivos. Con varios, eliges si se mezclan en una sola estructura o si cada archivo queda en su propia carpeta.
+2. Abre la app y arrastra uno o varios archivos. Con varios, eliges si se mezclan en una sola estructura o si cada archivo queda en su propia carpeta.
 3. **Carpetas repetidas:** elige qué grupos fundir. El contenido pasa a la carpeta destino, y las subcarpetas con el mismo nombre también se funden. «Imágenes» e «imagenes» cuentan como iguales.
 4. **Marcadores duplicados:** para cada grupo, marca *Mantener*, *Mover* o *Eliminar*, o aplica una acción masiva (conservar el más antiguo, el más reciente o el primero en el árbol).
 5. **Links rotos:** revisa los links y mueve o elimina los que ya no funcionan (ver abajo).
@@ -21,6 +23,8 @@ La revisión intenta abrir cada link desde el navegador y separa los resultados 
 - **No se pudo abrir / tiempo agotado:** sospechoso. Muchos sitios que funcionan bloquean que otra página los lea (cabecera `Cross-Origin-Resource-Policy`) y desde JavaScript eso no se distingue de un sitio caído. Hay que confirmarlos a mano.
 
 Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador. La revisión sí contacta a cada sitio, y la consulta DNS envía a Cloudflare solo el nombre de dominio.
+
+En la versión publicada (https), los links `http://` quedan como «Sin verificar (http)», porque una página https no puede pedir recursos http. Igual se detecta si su dominio ya no existe. Para revisarlos completos, abre `index.html` desde tu disco.
 
 ### Límite al combinar archivos
 
