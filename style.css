@@ -88,6 +88,7 @@
   .frow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); }
   .frow:first-child { border-top: 0; }
   .frow .meta { flex: 1 1 240px; }
+  .safari-warn { flex-basis: 100%; }
   .src { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px;
     font-size: 11px; color: var(--muted); white-space: nowrap; }
   .st { font-size: 12px; font-weight: 600; white-space: nowrap; }

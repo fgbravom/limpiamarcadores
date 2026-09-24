@@ -25,7 +25,8 @@
       <li><b>Chrome, Brave, Opera, Vivaldi:</b> administrador de marcadores (Ctrl+Shift+O) → menú ⋮ → <em>Exportar marcadores</em>.</li>
       <li><b>Edge:</b> favoritos (Ctrl+Shift+O) → menú ⋯ → <em>Exportar favoritos</em>.</li>
       <li><b>Firefox:</b> biblioteca (Ctrl+Shift+O) → <em>Importar y respaldar</em> → <em>Exportar marcadores a HTML</em>.</li>
-      <li><b>Safari:</b> <em>Archivo</em> → <em>Exportar</em> → <em>Marcadores</em> (HTML), o <em>Exportar datos de navegación</em> (.zip, se puede cargar tal cual).</li>
+      <li><b>Safari:</b> <em>Archivo</em> → <em>Exportar</em> → <em>Marcadores</em> (HTML), o <em>Exportar datos de navegación</em> (.zip, se puede cargar tal cual).
+        <span class="warn">Todavía no se ha probado con un export real de Safari: guarda una copia del original y revisa el resultado antes de borrar tus marcadores.</span></li>
     </ol>
   </details>
 
@@ -654,7 +655,8 @@ async function runPool(items, worker, concurrency, signal) {
     $('fileList').innerHTML = files.map((f, i) => `<div class="frow">
       <input type="text" data-label="${i}" value="${escapeHtml(f.label)}" size="12" title="Nombre corto del archivo">
       <span class="meta">${escapeHtml(f.name)} · ${f.parsed.links.length.toLocaleString('es')} marcadores · ${f.parsed.folders.length} carpetas · ${mb(f.size)}</span>
-      <button data-rm="${i}">Quitar</button></div>`).join('');
+      <button data-rm="${i}">Quitar</button>
+      ${/safari/i.test(f.name) ? '<span class="warn safari-warn">⚠ Safari aún no se ha probado con un export real. Revisa que los totales coincidan con tus marcadores y revisa el resultado antes de borrar nada.</span>' : ''}</div>`).join('');
     const size = files.reduce((s, f) => s + f.size, 0);
     $('filesInfo').textContent = files.length > 1 ? `${files.length} archivos · ${mb(size)} en total` : '';
     $('modeRow').classList.toggle('hidden', files.length < 2);

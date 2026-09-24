@@ -44,6 +44,16 @@ Se puede configurar si se ignoran:
 
 Funciona con cualquier archivo en el formato estándar de exportación de marcadores (Netscape Bookmark File), que usan todos los navegadores principales, y con el `.zip` de Safari. Al combinar archivos, solo la primera «barra de marcadores» conserva esa marca en el resultado, para que el navegador no se confunda al importar.
 
+Probado con exports reales de Brave, Comet, Vivaldi y Firefox.
+
+> [!WARNING]
+> **Safari no se ha probado con un export real.** El soporte se basa en el formato estándar y en un `.zip` armado a mano para las pruebas, no en un archivo sacado de Safari. Si usas marcadores de Safari:
+> - guarda una copia del export original antes de empezar;
+> - revisa que el total de marcadores y carpetas que muestra la app coincida con lo que tienes en Safari;
+> - revisa el archivo resultante antes de borrar tus marcadores actuales.
+>
+> Si algo falla, abre un issue con el detalle (sin adjuntar tus marcadores).
+
 ## Desarrollo
 
 Son solo `index.html` y `style.css`, sin dependencias ni paso de build.
