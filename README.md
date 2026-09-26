@@ -1,6 +1,6 @@
 # limpia/marcadores>
 
-Combina los marcadores de varios navegadores, encuentra carpetas repetidas, links duplicados y links rotos, decide qué hacer con cada uno y descarga un archivo listo para importar de vuelta.
+Combina los marcadores de varios navegadores, encuentra carpetas repetidas, links duplicados y links rotos, agrúpalos por dominio, decide qué hacer con cada uno y descarga un archivo listo para importar de vuelta.
 
 Todo corre en el navegador. Los archivos no se suben a ningún servidor.
 
@@ -26,7 +26,8 @@ Cuando los junté, la mayoría eran copias: solo había unos 1.500 links distint
 3. **Carpetas repetidas:** elige qué grupos fundir. El contenido pasa a la carpeta destino, y las subcarpetas con el mismo nombre también se funden. «Imágenes» e «imagenes» cuentan como iguales.
 4. **Marcadores duplicados:** para cada grupo, marca *Mantener*, *Mover* o *Eliminar*, o aplica una acción masiva (conservar el más antiguo, el más reciente o el primero en el árbol).
 5. **Links rotos:** revisa los links y mueve o elimina los que ya no funcionan (ver abajo).
-6. Descarga el resultado (`<nombre>_limpio.html`) e impórtalo en el navegador. Borra antes los marcadores actuales, o se sumarán a los importados.
+6. **Por dominio:** revisa cuántos marcadores tienes de cada sitio, ordena cada uno en su propia subcarpeta o elimina todo lo de un servicio que ya no usas (ver abajo).
+7. Descarga el resultado (`<nombre>_limpio.html`) e impórtalo en el navegador. Borra antes los marcadores actuales, o se sumarán a los importados.
 
 ### Links rotos
 
@@ -38,6 +39,17 @@ La revisión intenta abrir cada link desde el navegador y separa los resultados 
 Una página 404 dentro de un sitio que sí existe no se puede detectar desde el navegador. La revisión sí contacta a cada sitio, y la consulta DNS envía a Cloudflare solo el nombre de dominio.
 
 En la versión publicada (https), los links `http://` quedan como «Sin verificar (http)», porque una página https no puede pedir recursos http. Igual se detecta si su dominio ya no existe. Para revisarlos completos, abre `index.html` desde tu disco.
+
+### Por dominio
+
+Agrupa todos los marcadores por dominio principal: `gist.github.com` y `github.com/usuario` cuentan como `github.com`, y `www.amazon.co.uk` como `amazon.co.uk`.
+
+- **Juntar el mismo sitio en otros países** (activado por defecto): `google.com` y `google.cl` quedan en un solo grupo, que lleva el nombre del dominio con más marcadores.
+- **Plataformas de hosting:** en `github.io`, `vercel.app`, `netlify.app`, `blogspot.com`, `notion.site` y otras, cada subdominio es el sitio de otra persona, así que `juan.github.io` queda en su propio grupo y no se junta con `github.com`.
+- **Mover** deja cada marcador en una subcarpeta con el nombre de su dominio, dentro de la carpeta «Por dominio» (el nombre se puede cambiar). Con la acción masiva se ordenan todos los dominios visibles de una vez.
+- Los links que no son sitios web (`javascript:`, `file:`, `chrome://`…) quedan fuera. `localhost` y las IP se agrupan tal cual.
+
+Si un marcador también está marcado en otra pestaña, eliminar gana. Si no, se mueve a «Links rotos» o «Duplicados» antes que a «Por dominio».
 
 ### Límite al combinar archivos
 
@@ -85,7 +97,7 @@ Sin dependencias ni paso de build:
 |---|---|
 | `index.html` | La estructura de la página |
 | `style.css` | Los estilos |
-| `core.js` | La lógica pura, sin DOM: leer y exportar marcadores, combinar archivos, fundir carpetas, detectar duplicados, leer el `.zip` de Safari y revisar links |
+| `core.js` | La lógica pura, sin DOM: leer y exportar marcadores, combinar archivos, fundir carpetas, detectar duplicados, agrupar por dominio, leer el `.zip` de Safari y revisar links |
 | `app.js` | La interfaz: carga de archivos, pestañas, marcas y descarga |
 | `favicon.svg` | El ícono de la pestaña |
 | `vercel.json` | Cabeceras de seguridad de la versión publicada: solo se ejecutan los scripts propios y no se envía el `Referer` a los sitios revisados |

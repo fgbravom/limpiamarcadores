@@ -192,12 +192,12 @@ const LOCALE_SUB = /^((es|en|pt|fr|de|it|nl|pl|ru|ja|zh|ko|tr|sv|cl|ar|mx|co|pe|
 const LOCALE_PARAMS = /^(hl|lang|locale|gl)$/i;
 
 // Nombre del sitio sin subdominios ni TLD: aliexpress.com → aliexpress, amazon.co.uk → amazon.
-// isRoot = el host es el dominio mismo (sin subdominios como pelom-erp.daia.cl).
+// domain = dominio principal (amazon.co.uk). isRoot = el host es el dominio mismo (sin subdominios como pelom-erp.daia.cl).
 function siteName(host) {
   const p = host.split('.');
   const sld = p.length >= 3 && /^(co|com|org|net|gob|gov|edu|ac|ne|or)$/.test(p[p.length - 2]);
   const reg = p.slice(sld ? -3 : -2);
-  return { name: reg[0], isRoot: p.length === reg.length };
+  return { name: reg[0], domain: reg.join('.'), isRoot: p.length === reg.length };
 }
 
 function urlKey(href, o) {
@@ -251,7 +251,47 @@ function findGroups(links, o) {
   }));
 }
 
-// decide(link) -> 'keep' | 'delete' | nombre de la carpeta a la que se mueve
+// Plataformas donde cada subdominio es el sitio de otra persona: juan.github.io no es github.com
+const HOSTING = /^(github\.io|gitlab\.io|vercel\.app|netlify\.app|pages\.dev|web\.app|firebaseapp\.com|appspot\.com|herokuapp\.com|onrender\.com|railway\.app|fly\.dev|glitch\.me|surge\.sh|streamlit\.app|notion\.site|mintlify\.app|webflow\.io|framer\.website|lovable\.app|replit\.app|azurewebsites\.net|wordpress\.com|wixsite\.com|weebly\.com|tumblr\.com|substack\.com|blogspot\.[a-z.]+)$/;
+
+// Dominio principal de un link: gist.github.com → github.com, www.amazon.co.uk → amazon.co.uk,
+// miapp.vercel.app → miapp.vercel.app. site = nombre sin TLD, para juntar el mismo sitio en otro país
+// (foo.blogspot.com = foo.blogspot.cl); null en localhost e IPs.
+function domainOf(href) {
+  let url;
+  try { url = new URL(href.trim()); } catch (e) { return null; }
+  if (!/^https?:$/.test(url.protocol)) return null;
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (!host.includes('.') || /^[\d.]+$|:/.test(host)) return { domain: host, site: null };
+  const s = siteName(host);
+  const user = !s.isRoot && HOSTING.test(s.domain) && host.slice(0, -s.domain.length - 1).split('.').pop();
+  if (user && !LOCALE_SUB.test(user)) return { domain: user + '.' + s.domain, site: user + '.' + s.name };
+  return { domain: s.domain, site: s.name };
+}
+
+// Todos los marcadores agrupados por dominio principal, de más a menos marcadores.
+// Con joinTld, aliexpress.com y aliexpress.cl van juntos; el grupo lleva el nombre del dominio más usado.
+// Los que no son sitios web (javascript:, file:, chrome://…) quedan fuera y se cuentan en skipped.
+function findDomainGroups(links, joinTld) {
+  const map = new Map();
+  let skipped = 0;
+  for (const l of links) {
+    const d = domainOf(l.href);
+    if (!d) { skipped++; continue; }
+    const k = joinTld && d.site ? 'sitio:' + d.site : d.domain;
+    if (!map.has(k)) map.set(k, { items: [], count: new Map() });
+    const g = map.get(k);
+    g.items.push(l);
+    g.count.set(d.domain, (g.count.get(d.domain) || 0) + 1);
+  }
+  const groups = [...map].map(([key, g]) => {
+    const domains = [...g.count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([d]) => d);
+    return { key, label: domains[0], domains, items: g.items };
+  }).sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
+  return { groups, skipped };
+}
+
+// decide(link) -> 'keep' | 'delete' | nombre de la carpeta a la que se mueve | [carpeta, subcarpeta]
 function serializeBookmarks(root, decide, pruneEmpty) {
   const moved = new Map();
   let toolbarSeen = false;
@@ -263,7 +303,14 @@ function serializeBookmarks(root, decide, pruneEmpty) {
     '<TITLE>Bookmarks</TITLE>',
     '<H1>Bookmarks</H1>'];
   const linkLine = (l, ind) => ind + '<DT><A' + l.attrs + '>' + l.title + '</A>';
-  const addMoved = (d, l) => { if (!moved.has(d)) moved.set(d, []); moved.get(d).push(l); };
+  // moved: carpeta -> subcarpeta ('' = directo en la carpeta) -> marcadores
+  const addMoved = (d, l) => {
+    const [name, sub = ''] = Array.isArray(d) ? d : [d];
+    if (!moved.has(name)) moved.set(name, new Map());
+    const subs = moved.get(name);
+    if (!subs.has(sub)) subs.set(sub, []);
+    subs.get(sub).push(l);
+  };
   function hasContent(f) {
     return f.children.some(c => c.type === 'folder' ? (!pruneEmpty || hasContent(c)) : decide(c) === 'keep');
   }
@@ -298,14 +345,20 @@ function serializeBookmarks(root, decide, pruneEmpty) {
   }
   walk(root, 0, ind => {
     const now = Math.floor(Date.now() / 1000);
-    for (const [name, list] of moved) {
+    const folder = (name, ind, list, subs) => {
       out.push(ind + '<DT><H3 ADD_DATE="' + now + '" LAST_MODIFIED="' + now + '">' + escapeHtml(name) + '</H3>');
       out.push(ind + '<DL><p>');
       for (const l of list) out.push(linkLine(l, ind + '    '));
+      if (subs) for (const [sub, sl] of subs) folder(sub, ind + '    ', sl);
       out.push(ind + '</DL><p>');
+    };
+    for (const [name, subs] of moved) {
+      const direct = subs.get('') || [];
+      folder(name, ind, direct, [...subs].filter(([sub]) => sub).sort((a, b) => a[0].localeCompare(b[0])));
     }
   });
-  return { html: out.join('\n') + '\n', movedCount: [...moved.values()].reduce((s, a) => s + a.length, 0) };
+  const movedCount = [...moved.values()].reduce((s, subs) => s + [...subs.values()].reduce((t, a) => t + a.length, 0), 0);
+  return { html: out.join('\n') + '\n', movedCount };
 }
 
 // Lector mínimo de ZIP (el export de Safari): devuelve los .html que contiene.
@@ -426,6 +479,9 @@ if (typeof module !== 'undefined') {
     siteName,
     urlKey,
     findGroups,
+    HOSTING,
+    domainOf,
+    findDomainGroups,
     serializeBookmarks,
     unzipHtmlFiles,
     LOCAL_HOST,

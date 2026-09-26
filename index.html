@@ -84,6 +84,7 @@
       <button data-tab="folders" class="on">1 · Carpetas repetidas <span class="badge" id="tabF">0</span></button>
       <button data-tab="links">2 · Marcadores duplicados <span class="badge" id="tabL">0</span></button>
       <button data-tab="broken">3 · Links rotos <span class="badge" id="tabB">—</span></button>
+      <button data-tab="domains">4 · Por dominio <span class="badge" id="tabD">0</span></button>
     </nav>
 
     <!-- ===== Pestaña carpetas ===== -->
@@ -206,6 +207,45 @@
       </div>
       <p class="sub" id="bShown"></p>
       <div id="broken" class="group flat"></div>
+    </section>
+
+    <!-- ===== Pestaña por dominio ===== -->
+    <section id="tab-domains" class="hidden">
+      <div class="panel">
+        <p class="sub intro">Junta todos los marcadores del mismo dominio principal: gist.github.com y github.com/usuario cuentan como github.com.
+          Sirve para ver de qué sitios guardas más cosas, ordenar cada sitio en su propia carpeta o sacar de una vez todo lo de un servicio que ya no usas.
+          <b>Mover</b> deja el marcador en una subcarpeta con el nombre del dominio.</p>
+        <div class="row">
+          <span class="label">Agrupar</span>
+          <label class="chk"><input id="dJoinTld" type="checkbox" checked> juntar el mismo sitio en otros países (aliexpress.com = aliexpress.cl)</label>
+        </div>
+        <div class="row">
+          <span class="label">Acción masiva</span>
+          <select id="dAct">
+            <option value="move">Mover cada dominio a su subcarpeta</option>
+            <option value="delete">Eliminar</option>
+            <option value="keep">Mantener (quitar marca)</option>
+          </select>
+          <button id="dApply">Aplicar a los dominios visibles</button>
+          <label class="chk">Carpeta: <input id="domainName" type="text" value="Por dominio" size="14"></label>
+        </div>
+        <div class="row">
+          <span class="label">Filtrar</span>
+          <input id="dSearch" type="search" placeholder="Buscar por dominio, URL o título…">
+          <select id="dMin">
+            <option value="2">Con 2 o más marcadores</option>
+            <option value="5">Con 5 o más</option>
+            <option value="20">Con 20 o más</option>
+            <option value="1">Todos los dominios</option>
+          </select>
+          <select id="dSort">
+            <option value="count">Más marcadores primero</option>
+            <option value="name">Por dominio (A-Z)</option>
+          </select>
+        </div>
+      </div>
+      <p class="sub" id="dShown"></p>
+      <div id="dgroups"></div>
     </section>
   </section>
 </main>

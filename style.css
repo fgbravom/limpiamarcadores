@@ -116,6 +116,11 @@
   .more { display: block; margin: 12px auto; }
   .flat .more { margin: 10px auto; }
   details summary { cursor: pointer; font-weight: 600; }
+  .dgroup > summary { font-weight: normal; list-style: none; }
+  .dgroup > summary::-webkit-details-marker { display: none; }
+  .dgroup > summary::after { content: '▾'; color: var(--muted); transition: transform .15s; }
+  .dgroup:not([open]) > summary::after { transform: rotate(-90deg); }
+  .dgroup:not([open]) > .ghead { border-bottom: 0; }
   details ol { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
   @media (max-width: 640px) {
     .item { grid-template-columns: 1fr; }

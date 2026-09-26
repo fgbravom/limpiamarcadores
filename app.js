@@ -9,10 +9,11 @@
   let fgroups = [], groups = [], mergeResult = { merged: 0, skipped: [] };
   const decisions = new Map();   // duplicados: id -> 'move' | 'delete'
   const brokenDec = new Map();   // rotos: id -> 'move' | 'delete'
+  const domainDec = new Map();   // por dominio: id -> 'move' | 'delete'
   // Plan de fusión por grupo de carpetas: key -> { on, dest: fid, exclude: Set<fid> }
   const mergePlan = new Map();
   const opts = { proto: true, www: true, slash: true, utm: true, locale: true, hash: false, site: true };
-  const limits = { folders: PAGE, links: PAGE, broken: PAGE };
+  const limits = { folders: PAGE, links: PAGE, broken: PAGE, domains: PAGE };
   let tab = 'folders';
 
   // ---------- Carga de archivos ----------
@@ -23,7 +24,7 @@
   ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 
-  const hasMarks = () => decisions.size || brokenDec.size || [...mergePlan.values()].some(p => p.on);
+  const hasMarks = () => decisions.size || brokenDec.size || domainDec.size || [...mergePlan.values()].some(p => p.on);
 
   async function addFiles(list) {
     if (!list.length) return;
@@ -65,7 +66,7 @@
     if (!b) return;
     if (hasMarks() && !confirm('Quitar un archivo borra las marcas de marcadores que ya hiciste. ¿Seguimos?')) return;
     files.splice(Number(b.dataset.rm), 1);
-    decisions.clear(); brokenDec.clear();
+    decisions.clear(); brokenDec.clear(); domainDec.clear();
     if (!files.length) { location.reload(); return; }
     recombine(false);
   });
@@ -75,7 +76,7 @@
       // Cambia qué marcadores existen, así que las marcas hechas dejan de calzar
       if (hasMarks() && !confirm('Cambiar la papelera borra las marcas de marcadores que ya hiciste. ¿Seguimos?')) { el.checked = !el.checked; return; }
       files[Number(el.dataset.trash)].includeTrash = el.checked;
-      decisions.clear(); brokenDec.clear();
+      decisions.clear(); brokenDec.clear(); domainDec.clear();
       recombine(false);
       return;
     }
@@ -135,6 +136,7 @@
     mergeResult = applyMerges(root, plans);
     work = indexTree(root);
     recomputeLinks(false);
+    recomputeDomains();
     updateBrokenStats();
     renderTab();
   }
@@ -153,9 +155,9 @@
   }
 
   function renderTab() {
-    for (const t of ['folders', 'links', 'broken']) $('tab-' + t).classList.toggle('hidden', tab !== t);
+    for (const t of ['folders', 'links', 'broken', 'domains']) $('tab-' + t).classList.toggle('hidden', tab !== t);
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    if (tab === 'folders') renderFolders(); else if (tab === 'links') renderLinks(); else renderBroken();
+    ({ folders: renderFolders, links: renderLinks, broken: renderBroken, domains: renderDomains })[tab]();
     updateSummary();
   }
   document.querySelector('.tabs').addEventListener('click', e => {
@@ -462,29 +464,138 @@
   $('bSearch').addEventListener('input', () => { clearTimeout(bt); bt = setTimeout(() => { limits.broken = PAGE; renderBroken(); }, 150); });
   $('bShow').addEventListener('change', () => { limits.broken = PAGE; renderBroken(); });
 
+  // ---------- Por dominio ----------
+  let dgroups = [], dSkipped = 0, dByKey = new Map(), linkDomain = new Map();
+  const dOpen = new Set(); // grupos desplegados; sus marcadores se dibujan solo al abrirlos
+  const ddec = l => domainDec.get(l.id) || 'keep';
+
+  function recomputeDomains() {
+    const r = findDomainGroups(work.links, $('dJoinTld').checked);
+    dgroups = r.groups; dSkipped = r.skipped;
+    dByKey = new Map(dgroups.map(g => [g.key, g]));
+    linkDomain = new Map(dgroups.flatMap(g => g.items.map(l => [l.id, g.label])));
+    for (const k of [...dOpen]) if (!dByKey.has(k)) dOpen.delete(k);
+    $('tabD').textContent = dgroups.length;
+  }
+
+  function visibleDGroups() {
+    const q = $('dSearch').value.trim().toLowerCase();
+    const min = Number($('dMin').value);
+    const list = dgroups.filter(g => g.items.length >= min &&
+      (!q || g.domains.some(d => d.includes(q)) || g.items.some(l => matches(l, q))));
+    return $('dSort').value === 'name' ? list.slice().sort((a, b) => a.label.localeCompare(b.label)) : list;
+  }
+
+  // Marcas hechas en otras pestañas, para no llevarse sorpresas al mover o borrar un dominio entero
+  const otherTag = l => {
+    const d = decisions.get(l.id), b = brokenDec.get(l.id);
+    const t = [d && `duplicado: ${d === 'delete' ? 'eliminar' : 'mover'}`, b && `link roto: ${b === 'delete' ? 'eliminar' : 'mover'}`].filter(Boolean);
+    return t.length ? ` · <span class="st st-na">${t.join(' · ')}</span>` : '';
+  };
+  function drowHtml(l) {
+    const d = ddec(l);
+    const title = decodeEntities(l.title) || '(sin título)';
+    return `<div class="item s-${d}">
+      ${segHtml(l.id, d, 'data-d')}
+      <div class="ititle"><a href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>${srcTag(l)}
+        <div class="meta">📁 ${fmtPath(l.path)} · ${escapeHtml(l.href)}${statusTag(l)}${otherTag(l)}</div></div>
+    </div>`;
+  }
+  function dgroupHtml(g) {
+    const acts = new Set(g.items.map(ddec));
+    const all = acts.size === 1 ? [...acts][0] : '';
+    const marked = g.items.filter(l => ddec(l) !== 'keep').length;
+    const status = marked && !all ? `<span class="meta">${marked} marcados</span>` : '';
+    const others = g.domains.length > 1 ? `<span class="meta">también ${g.domains.slice(1).map(escapeHtml).join(', ')}</span>` : '';
+    const open = dOpen.has(g.key);
+    return `<details class="group dgroup" data-dg="${escapeHtml(g.key)}"${open ? ' open' : ''}><summary class="ghead">
+      ${segHtml('', all, 'data-dall')}<span class="badge">${g.items.length}</span>
+      <span class="gname">${escapeHtml(g.label)} ${others}</span>${status}</summary>${open ? g.items.map(drowHtml).join('') : ''}</details>`;
+  }
+
+  let dcurrent = [];
+  function renderDomains() {
+    dcurrent = visibleDGroups();
+    const shown = dcurrent.slice(0, limits.domains);
+    $('dgroups').innerHTML = shown.length ? shown.map(dgroupHtml).join('') + moreBtn('domains', shown.length, dcurrent.length)
+      : '<div class="empty">No hay dominios que coincidan.</div>';
+    const n = dcurrent.reduce((s, g) => s + g.items.length, 0);
+    $('dShown').textContent = `${dcurrent.length} de ${dgroups.length} dominios · ${n.toLocaleString('es')} marcadores` +
+      (dSkipped ? ` · ${dSkipped} marcadores que no son sitios web quedan fuera` : '');
+  }
+
+  function setDomain(g, act) {
+    for (const l of g.items) { if (act === 'keep') domainDec.delete(l.id); else domainDec.set(l.id, act); }
+  }
+
+  // toggle no burbujea: se escucha en captura. Al abrir un grupo se dibujan sus marcadores.
+  $('dgroups').addEventListener('toggle', e => {
+    const el = e.target, g = el.dataset && dByKey.get(el.dataset.dg);
+    if (!g) return;
+    if (!el.open) { dOpen.delete(g.key); return; }
+    dOpen.add(g.key);
+    if (!el.querySelector('.item')) el.insertAdjacentHTML('beforeend', g.items.map(drowHtml).join(''));
+  }, true);
+  $('dgroups').addEventListener('click', e => {
+    const b = e.target.closest('button'), card = b && b.closest('.dgroup');
+    if (!card) return;
+    const g = dByKey.get(card.dataset.dg);
+    if (b.dataset.dall) { e.preventDefault(); setDomain(g, b.dataset.dall); }
+    else if (b.dataset.d) {
+      const id = Number(b.dataset.id);
+      if (b.dataset.d === 'keep') domainDec.delete(id); else domainDec.set(id, b.dataset.d);
+    } else return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = dgroupHtml(g);
+    card.replaceWith(tmp.firstElementChild);
+    updateSummary();
+  });
+  $('dApply').addEventListener('click', () => {
+    const list = visibleDGroups(), act = $('dAct').value;
+    const n = list.reduce((s, g) => s + g.items.length, 0);
+    if (act !== 'keep' && !confirm(`Se marcarán ${n.toLocaleString('es')} marcadores de ${list.length} dominios para ` +
+      (act === 'delete' ? 'eliminar' : 'mover, cada dominio a su subcarpeta') + '. ¿Seguimos?')) return;
+    for (const g of list) setDomain(g, act);
+    renderTab();
+  });
+  $('dJoinTld').addEventListener('change', () => { recomputeDomains(); limits.domains = PAGE; renderTab(); });
+  let dt;
+  $('dSearch').addEventListener('input', () => { clearTimeout(dt); dt = setTimeout(() => { limits.domains = PAGE; renderDomains(); }, 150); });
+  $('dMin').addEventListener('change', () => { limits.domains = PAGE; renderDomains(); });
+  $('dSort').addEventListener('change', () => { limits.domains = PAGE; renderDomains(); });
+
   // ---------- Resumen y descarga ----------
-  // Decisión final de cada marcador: eliminar gana; si no, rotos antes que duplicados
+  // Decisión final de cada marcador: eliminar gana; si no, rotos, luego duplicados y al final por dominio
   function decide(l) {
-    const d1 = decisions.get(l.id), d2 = brokenDec.get(l.id);
-    if (d1 === 'delete' || d2 === 'delete') return 'delete';
+    const d1 = decisions.get(l.id), d2 = brokenDec.get(l.id), d3 = domainDec.get(l.id);
+    if (d1 === 'delete' || d2 === 'delete' || d3 === 'delete') return 'delete';
     if (d2 === 'move') return $('brokenName').value.trim() || 'Links rotos';
     if (d1 === 'move') return $('moveName').value.trim() || 'Duplicados';
+    if (d3 === 'move') return [$('domainName').value.trim() || 'Por dominio', linkDomain.get(l.id) || 'otros'];
     return 'keep';
   }
 
   function updateSummary() {
     if (!work) return;
-    const counts = new Map();
-    for (const l of work.links) { const d = decide(l); if (d !== 'keep') counts.set(d, (counts.get(d) || 0) + 1); }
+    const counts = new Map(), dfolders = new Set();
+    let dmoved = 0;
+    for (const l of work.links) {
+      const d = decide(l);
+      if (Array.isArray(d)) { dmoved++; dfolders.add(d[1]); }
+      else if (d !== 'keep') counts.set(d, (counts.get(d) || 0) + 1);
+    }
     const parts = [];
     if (mergeResult.merged) parts.push(`<span class="merge-t">${mergeResult.merged}</span> carpetas fundidas`);
     if (counts.get('delete')) parts.push(`<span class="del-t">${counts.get('delete')}</span> marcadores para eliminar`);
     for (const [name, n] of counts) if (name !== 'delete') parts.push(`<span class="move-t">${n}</span> para mover a «${escapeHtml(name)}»`);
+    if (dmoved) parts.push(`<span class="move-t">${dmoved}</span> para ordenar en «${escapeHtml($('domainName').value.trim() || 'Por dominio')}»` +
+      ` (${dfolders.size} ${dfolders.size === 1 ? 'subcarpeta' : 'subcarpetas'})`);
     $('summary').innerHTML = parts.length ? parts.join(' · ') : files.length > 1 ? 'Archivos combinados, sin otros cambios.' : 'Todavía no has marcado cambios.';
     $('download').disabled = !parts.length && !$('pruneEmpty').checked && files.length < 2;
   }
   $('moveName').addEventListener('input', updateSummary);
   $('brokenName').addEventListener('input', updateSummary);
+  $('domainName').addEventListener('input', updateSummary);
   $('pruneEmpty').addEventListener('change', updateSummary);
 
   $('download').addEventListener('click', () => {
